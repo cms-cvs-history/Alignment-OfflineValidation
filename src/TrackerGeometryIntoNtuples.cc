@@ -13,7 +13,7 @@
 //
 // Original Author:  Nhan Tran
 //         Created:  Mon Jul 16m 16:56:34 CDT 2007
-// $Id: TrackerGeometryIntoNtuples.cc,v 1.1 2007/10/11 17:34:54 ntran Exp $
+// $Id: TrackerGeometryIntoNtuples.cc,v 1.2 2007/10/23 07:24:07 fronga Exp $
 //
 //
 
@@ -38,10 +38,10 @@
 #include "CondFormats/Alignment/interface/AlignmentErrors.h"
 #include "CondFormats/Alignment/interface/AlignmentSorter.h"
 #include "CondFormats/Alignment/interface/SurveyErrors.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyErrorRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerAlignmentRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerAlignmentErrorRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyErrorRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerAlignmentRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerAlignmentErrorRcd.h"
 #include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
@@ -57,8 +57,8 @@
 #include "Alignment/CommonAlignment/interface/Alignable.h"
 #include "Alignment/CommonAlignment/interface/AlignTools.h"
 #include "CondFormats/Alignment/interface/SurveyErrors.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyErrorRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyErrorRcd.h"
 #include "DataFormats/DetId/interface/DetId.h"
 
 //
@@ -138,9 +138,11 @@ void TrackerGeometryIntoNtuples::beginJob(const edm::EventSetup& iSetup)
 	//accessing the initial geometry
 	edm::ESHandle<GeometricDet> theGeometricDet;
 	iSetup.get<IdealGeometryRecord>().get(theGeometricDet);
+    edm::ESHandle<DDCompactView> cpv;
+    iSetup.get<IdealGeometryRecord>().get(cpv);
 	TrackerGeomBuilderFromGeometricDet trackerBuilder;
 	//currernt tracker
-	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet); 
+	TrackerGeometry* theCurTracker = trackerBuilder.build(&*cpv,&*theGeometricDet); 
 
 	
 	//build the tracker

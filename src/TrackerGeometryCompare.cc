@@ -2,10 +2,10 @@
 #include "CondFormats/Alignment/interface/AlignmentErrors.h"
 #include "CondFormats/Alignment/interface/AlignmentSorter.h"
 #include "CondFormats/Alignment/interface/SurveyErrors.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyErrorRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerAlignmentRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerAlignmentErrorRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyErrorRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerAlignmentRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerAlignmentErrorRcd.h"
 #include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/Framework/interface/EventSetup.h"
 #include "FWCore/MessageLogger/interface/MessageLogger.h"
@@ -22,8 +22,8 @@
 #include "Alignment/CommonAlignment/interface/Alignable.h"
 #include "Alignment/CommonAlignment/interface/AlignTools.h"
 #include "CondFormats/Alignment/interface/SurveyErrors.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyRcd.h"
-#include "CondFormats/AlignmentRecord/interface/TrackerSurveyErrorRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyRcd.h"
+#include "CondFormats/DataRecord/interface/TrackerSurveyErrorRcd.h"
 #include "DataFormats/DetId/interface/DetId.h"
 
 #include "Alignment/OfflineValidation/interface/TrackerGeometryCompare.h"
@@ -120,18 +120,20 @@ void TrackerGeometryCompare::createDBGeometry(const edm::EventSetup& iSetup){
 	edm::LogInfo("DBGeom") << "Creating Geoemtries from database...";
 	
 	//accessing the initial geometry
+    edm::ESHandle<DDCompactView> cpv;
+	iSetup.get<IdealGeometryRecord>().get(cpv);
 	edm::ESHandle<GeometricDet> theGeometricDet;
 	iSetup.get<IdealGeometryRecord>().get(theGeometricDet);
 	TrackerGeomBuilderFromGeometricDet trackerBuilder;
 	//reference tracker
-	TrackerGeometry* theRefTracker = trackerBuilder.build(&*theGeometricDet); 
+	TrackerGeometry* theRefTracker = trackerBuilder.build(&*cpv,&*theGeometricDet); 
 	referenceTracker = new AlignableTracker(&(*theRefTracker));
 	//dummy tracker
 	dummyTracker = new AlignableTracker(&(*theRefTracker));
 	
 
 	//currernt tracker
-	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet); 
+	TrackerGeometry* theCurTracker = trackerBuilder.build(&*cpv,&*theGeometricDet); 
 	
 	if (_inputType == "tracker"){
 		edm::ESHandle<Alignments> alignments;
@@ -250,12 +252,12 @@ void TrackerGeometryCompare::createROOTGeometry(const edm::EventSetup& iSetup){
 	TrackerGeomBuilderFromGeometricDet trackerBuilder;
 
 	//reference tracker
-	TrackerGeometry* theRefTracker = trackerBuilder.build(&*theGeometricDet); 
+	TrackerGeometry* theRefTracker = trackerBuilder.build(&*cpv,&*theGeometricDet); 
 	GeometryAligner aligner1;
 	aligner1.applyAlignments<TrackerGeometry>( &(*theRefTracker), &(*alignments1), &(*alignmentErrors1));
 	referenceTracker = new AlignableTracker(&(*theRefTracker));
 	//currernt tracker
-	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet); 
+	TrackerGeometry* theCurTracker = trackerBuilder.build(&*cpv,&*theGeometricDet); 
 	GeometryAligner aligner2;
 	aligner2.applyAlignments<TrackerGeometry>( &(*theCurTracker), &(*alignments2), &(*alignmentErrors2));
 	currentTracker = new AlignableTracker(&(*theCurTracker));

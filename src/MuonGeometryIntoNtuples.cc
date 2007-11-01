@@ -13,7 +13,7 @@
 //
 // Original Author:  Jim Pivarski
 //         Created:  Mon Jul 16 16:56:34 CDT 2007
-// $Id: MuonGeometryIntoNtuples.cc,v 1.2 2007/09/21 17:12:51 pivarski Exp $
+// $Id: MuonGeometryIntoNtuples.cc,v 1.3 2007/10/23 07:20:42 fronga Exp $
 //
 //
 
@@ -39,15 +39,15 @@
 #include "Geometry/DTGeometryBuilder/src/DTGeometryBuilderFromDDD.h"
 #include "Geometry/CSCGeometryBuilder/src/CSCGeometryBuilderFromDDD.h"
 #include "Geometry/TrackingGeometryAligner/interface/GeometryAligner.h"
-#include "CondFormats/AlignmentRecord/interface/DTAlignmentRcd.h"
-#include "CondFormats/AlignmentRecord/interface/DTAlignmentErrorRcd.h"
-#include "CondFormats/AlignmentRecord/interface/CSCAlignmentRcd.h"
-#include "CondFormats/AlignmentRecord/interface/CSCAlignmentErrorRcd.h"
+#include "CondFormats/DataRecord/interface/DTAlignmentRcd.h"
+#include "CondFormats/DataRecord/interface/DTAlignmentErrorRcd.h"
+#include "CondFormats/DataRecord/interface/CSCAlignmentRcd.h"
+#include "CondFormats/DataRecord/interface/CSCAlignmentErrorRcd.h"
 #include "CondFormats/Alignment/interface/SurveyErrors.h"
-#include "CondFormats/AlignmentRecord/interface/DTSurveyRcd.h"
-#include "CondFormats/AlignmentRecord/interface/DTSurveyErrorRcd.h"
-#include "CondFormats/AlignmentRecord/interface/CSCSurveyRcd.h"
-#include "CondFormats/AlignmentRecord/interface/CSCSurveyErrorRcd.h"
+#include "CondFormats/DataRecord/interface/DTSurveyRcd.h"
+#include "CondFormats/DataRecord/interface/DTSurveyErrorRcd.h"
+#include "CondFormats/DataRecord/interface/CSCSurveyRcd.h"
+#include "CondFormats/DataRecord/interface/CSCSurveyErrorRcd.h"
 #include "Alignment/CommonAlignment/interface/AlignableObjectId.h"
 #include "Alignment/CommonAlignment/interface/StructureType.h"
 #include "DataFormats/MuonDetId/interface/MuonSubdetId.h"
@@ -178,9 +178,7 @@ MuonGeometryIntoNtuples::beginJob(const edm::EventSetup& iSetup)
 
    // 1_7_X and later
    DTGeometry *dtGeometry = DTGeometryBuilder.build(&(*cpv), *mdc);
-   boost::shared_ptr<CSCGeometry> boost_cscGeometry;
-   CSCGeometryBuilder.build(boost_cscGeometry, &(*cpv), *mdc);
-   CSCGeometry *cscGeometry = &(*boost_cscGeometry);
+   CSCGeometry *cscGeometry = CSCGeometryBuilder.build(&(*cpv), *mdc);
 
    edm::LogWarning("MuonGeometryIntoNtuples") << "built ideal geometry";
 
