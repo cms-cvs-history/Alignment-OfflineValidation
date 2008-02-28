@@ -1,0 +1,13 @@
+// Put here the modules you want the cfg file to use,
+// then include this file in your cfg file.
+// i.e. in Validator.cfg replace 'module demo = Validator {} '
+// with 'include "anlyzerDir/Validator/data/Validator.cfi" '.
+// (Remember that filenames are case sensitive.)
+
+module TrackerOfflineValidation = TrackerOfflineValidation {
+    InputTag Tracks = TrackRefitter
+    string trajectoryInput = "TrackRefitter"
+    PSet TH1ResModules = { int32 Nbinx =  1000  double xmin = -3.0 double xmax =  3.0 }  
+    PSet TH1NormResModules = { int32 Nbinx =  90  double xmin = -3.0 double xmax =  3.0 }  
+
+}
