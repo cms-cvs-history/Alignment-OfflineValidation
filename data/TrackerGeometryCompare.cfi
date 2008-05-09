@@ -2,7 +2,7 @@
 
 module TrackerGeometryCompare = TrackerGeometryCompare {
 
-	untracked string inputROOTFile1 = "idealtracker1.root"
+	untracked string inputROOTFile1 = "IDEAL"
 	untracked string inputROOTFile2 = "idealtracker2.root"
 	untracked string treeName = "alignTree"
 
