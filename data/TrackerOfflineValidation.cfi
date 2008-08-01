@@ -7,6 +7,9 @@
 module TrackerOfflineValidation = TrackerOfflineValidation {
     InputTag Tracks = TrackRefitter
     string trajectoryInput = "TrackRefitter"
+    bool localCoorHistosOn         = false
+    bool moduleLevelHistsTransient = false
+    bool overlappOn                = false 
     PSet TH1ResModules = { int32 Nbinx =  1000  double xmin = -3.0 double xmax =  3.0 }  
     PSet TH1NormResModules = { int32 Nbinx =  90  double xmin = -3.0 double xmax =  3.0 }  
 
