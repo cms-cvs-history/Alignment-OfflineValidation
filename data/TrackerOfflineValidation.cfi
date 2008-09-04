@@ -10,7 +10,25 @@ module TrackerOfflineValidation = TrackerOfflineValidation {
     bool localCoorHistosOn         = false
     bool moduleLevelHistsTransient = false
     bool overlappOn                = false 
-    PSet TH1ResModules = { int32 Nbinx =  300  double xmin = -3.0 double xmax =  3.0 }  
-    PSet TH1NormResModules = { int32 Nbinx =  300  double xmin = -3.0 double xmax =  3.0 }  
+    bool stripYResiduals           = false
+    bool useFwhm                   = true
+    // Strip Histogramms
+    PSet TH1XResStripModules = { int32 Nbinx =  100  double xmin = -0.5 double xmax =  0.5 }  
+    PSet TH1XprimeResStripModules = { int32 Nbinx =  100  double xmin = -0.5 double xmax =  0.5 }  
+    PSet TH1YResStripModules = { int32 Nbinx =  100  double xmin = -10.0 double xmax =  10.0 }  
+    // Normalized Strip Histogramms
+    PSet TH1NormXResStripModules = { int32 Nbinx =  100  double xmin = -5.0 double xmax =  5.0 }  
+    PSet TH1NormXprimeResStripModules = { int32 Nbinx =  100  double xmin = -5.0 double xmax =  5.0 }  
+    PSet TH1NormYResStripModules = { int32 Nbinx =  100  double xmin = -5.0 double xmax =  5.0 }  
+
+    // Pixel Histogramms
+    PSet TH1XResPixelModules = { int32 Nbinx =  100  double xmin = -0.5 double xmax =  0.5 }  
+    PSet TH1XprimeResPixelModules = { int32 Nbinx =  100  double xmin = -0.5 double xmax =  0.5 }  
+    PSet TH1YResPixelModules = { int32 Nbinx =  100  double xmin = -0.5 double xmax =  0.5 }  
+    // Normalized Pixel Histogramms
+    PSet TH1NormXResPixelModules = { int32 Nbinx =  100  double xmin = -5.0 double xmax =  5.0 }  
+    PSet TH1NormXprimeResPixelModules = { int32 Nbinx =  100  double xmin = -5.0 double xmax =  5.0 }  
+    PSet TH1NormYResPixelModules = { int32 Nbinx =  100  double xmin = -5.0 double xmax =  5.0 }  
+
 
 }
