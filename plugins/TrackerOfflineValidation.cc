@@ -13,7 +13,7 @@
 //
 // Original Author:  Erik Butz
 //         Created:  Tue Dec 11 14:03:05 CET 2007
-// $Id: TrackerOfflineValidation.cc,v 1.13 2008/09/04 12:42:10 ebutz Exp $
+// $Id: TrackerOfflineValidation.cc,v 1.16 2008/09/19 15:23:11 flucke Exp $
 //
 //
 
@@ -107,17 +107,23 @@ private:
   };
   
   struct TreeVariables{
-    TreeVariables(): meanLocalX_(), meanNormLocalX_(), meanX_(), meanNormX_(), 
+    TreeVariables(): meanLocalX_(), meanNormLocalX_(), meanX_(), meanNormX_(),
+		     meanY_(), meanNormY_(),
 		     rmsLocalX_(), rmsNormLocalX_(), rmsX_(), rmsNormX_(), 
+		     rmsY_(), rmsNormY_(), 
 		     posR_(), posPhi_(), posEta_(),
 		     posX_(), posY_(), posZ_(),
 		     entries_(), moduleId_(), subDetId_(),
 		     layer_(), side_(), rod_(),ring_(), 
 		     petal_(),blade_(), panel_(), outerInner_(),
 		     isDoubleSide_(),
-		     histNameLocalX_(), histNameNormLocalX_(), histNameX_(), histNameNormX_()  {} 
+		     histNameLocalX_(), histNameNormLocalX_(), histNameX_(), histNameNormX_(), 
+                     histNameY_(), histNameNormY_() {} 
+    void clear() { *this = TreeVariables(); }
     Float_t meanLocalX_, meanNormLocalX_, meanX_,meanNormX_,    //mean value read out from modul histograms
+      meanY_,meanNormY_, 
       rmsLocalX_, rmsNormLocalX_, rmsX_, rmsNormX_,      //rms value read out from modul histograms
+      rmsY_, rmsNormY_,
       posR_, posPhi_, posEta_,                     //global coordiantes    
       posX_, posY_, posZ_;             //global coordiantes 
     UInt_t  entries_, moduleId_, subDetId_,          //number of entries for each modul //modul Id = detId and subdetector Id
@@ -126,7 +132,8 @@ private:
       blade_, panel_, 
       outerInner_; //orientation of modules in TIB:1/2= int/ext string, TID:1/2=back/front ring, TEC 1/2=back/front petal 
     Bool_t isDoubleSide_;
-    std::string histNameLocalX_, histNameNormLocalX_, histNameX_, histNameNormX_;
+    std::string histNameLocalX_, histNameNormLocalX_, histNameX_, histNameNormX_,
+       histNameY_, histNameNormY_;    
   };
 
 
@@ -166,7 +173,7 @@ private:
   bool isDetOrDetUnit(align::StructureType type);
 
   TH1* bookTH1F(bool isTransient, TFileDirectory& tfd, const char* histName, const char* histTitle, 
-		int nBinsX, float lowX, float highX);
+		int nBinsX, double lowX, double highX);
 
   void getBinning(uint32_t subDetId, TrackerOfflineValidation::HistogrammType residualtype, 
 		  int &nBinsX, double &lowerBoundX, double &upperBoundX);
@@ -448,15 +455,6 @@ TrackerOfflineValidation::bookHists(TFileDirectory &tfd, const Alignable& ali, a
   TrackerAlignableId aliid;
   const DetId id = ali.id();
 
-  // binnings for module level histogramms are steerable via cfg file
-  int32_t i_residuals_Nbins = 0, i_residuals_NbinsY = 0, i_normres_Nbins = 0;
-  double d_residual_xmin = 0., d_residual_xmax = 0., 
-         d_normres_xmin = 0., d_normres_xmax = 0.,
-         d_residual_ymin = 0., d_residual_ymax = 0. ;
-  this->getBinning(id.subdetId(), XResidual, i_residuals_Nbins, d_residual_xmin, d_residual_xmax );
-  this->getBinning(id.subdetId(), NormXResidual, i_normres_Nbins, d_normres_xmin, d_normres_xmax );
-  this->getBinning(id.subdetId(), YprimeResidual, i_residuals_NbinsY, d_residual_ymin, d_residual_ymax);
-
   // comparing subdetandlayer to subdetIds gives a warning at compile time
   // -> subdetandlayer could also be pair<uint,uint> but this has to be adapted
   // in AlignableObjId 
@@ -504,30 +502,38 @@ TrackerOfflineValidation::bookHists(TFileDirectory &tfd, const Alignable& ali, a
   
   if( this->isDetOrDetUnit( subtype ) ) {
     ModuleHistos &histStruct = this->getHistStructFromMap(id);
-    
+    int nbins = 0;
+    double xmin = 0., xmax = 0.;
+
     // decide via cfg if hists in local coordinates should be booked 
     if(lCoorHistOn_) {
+      this->getBinning(id.subdetId(), XResidual, nbins, xmin, xmax);
       histStruct.ResHisto = this->bookTH1F(moduleLevelHistsTransient_, tfd, 
 					   histoname.str().c_str(),histotitle.str().c_str(),		     
-					   i_residuals_Nbins,d_residual_xmin,d_residual_xmax);
+					   nbins, xmin, xmax);
+      this->getBinning(id.subdetId(), NormXResidual, nbins, xmin, xmax);
       histStruct.NormResHisto = this->bookTH1F(moduleLevelHistsTransient_, tfd,
 					       normhistoname.str().c_str(),normhistotitle.str().c_str(),
-					       i_normres_Nbins,d_normres_xmin,d_normres_xmax);
+					       nbins, xmin, xmax);
     } 
+    this->getBinning(id.subdetId(), XprimeResidual, nbins, xmin, xmax);
     histStruct.ResXprimeHisto = this->bookTH1F(moduleLevelHistsTransient_, tfd, 
 					       xprimehistoname.str().c_str(),xprimehistotitle.str().c_str(),
-					       i_residuals_Nbins,d_residual_xmin,d_residual_xmax);
+					       nbins, xmin, xmax);
+    this->getBinning(id.subdetId(), NormXprimeResidual, nbins, xmin, xmax);
     histStruct.NormResXprimeHisto = this->bookTH1F(moduleLevelHistsTransient_, tfd, 
 						   normxprimehistoname.str().c_str(),normxprimehistotitle.str().c_str(),
-						   i_normres_Nbins,d_normres_xmin,d_normres_xmax);
+						   nbins, xmin, xmax);
 
     if( this->isPixel(subdetandlayer.first) || stripYResiduals_ ) {
+      this->getBinning(id.subdetId(), YprimeResidual, nbins, xmin, xmax);
       histStruct.ResYprimeHisto = this->bookTH1F(moduleLevelHistsTransient_, tfd,
 						 yprimehistoname.str().c_str(),yprimehistotitle.str().c_str(),
-						 i_residuals_NbinsY,d_residual_ymin,d_residual_ymax);
+						 nbins, xmin, xmax);
+      this->getBinning(id.subdetId(), NormYprimeResidual, nbins, xmin, xmax);
       histStruct.NormResYprimeHisto = this->bookTH1F(moduleLevelHistsTransient_, tfd, 
 						     normyprimehistoname.str().c_str(),normyprimehistotitle.str().c_str(),
-						     i_normres_Nbins,d_normres_xmin,d_normres_xmax);
+						     nbins, xmin, xmax);
     }
 
   }
@@ -536,7 +542,7 @@ TrackerOfflineValidation::bookHists(TFileDirectory &tfd, const Alignable& ali, a
 
 
 TH1* TrackerOfflineValidation::bookTH1F(bool isTransient, TFileDirectory& tfd, const char* histName, const char* histTitle, 
-		int nBinsX, float lowX, float highX)
+		int nBinsX, double lowX, double highX)
 {
   if(isTransient) {
     vDeleteObjects_.push_back(new TH1F(histName, histTitle, nBinsX, lowX, highX));
@@ -890,8 +896,8 @@ TrackerOfflineValidation::collateSummaryHists( TFileDirectory &tfd, const Aligna
     if(  !(this->isDetOrDetUnit( (alivec)[iComp]->alignableObjectId()) )
 	 || (alivec)[0]->components().size() > 1 ) {
       TFileDirectory f = tfd.mkdir((dirname.str()).c_str());
-      collateSummaryHists( f, *(alivec)[iComp], i, aliobjid, v_profiles);
-      v_levelProfiles.push_back(bookSummaryHists(tfd, *(alivec[iComp]), ali.alignableObjectId(), iComp, aliobjid));
+      this->collateSummaryHists( f, *(alivec)[iComp], i, aliobjid, v_profiles);
+      v_levelProfiles.push_back(this->bookSummaryHists(tfd, *(alivec[iComp]), ali.alignableObjectId(), iComp, aliobjid));
       for(uint n = 0; n < v_profiles.size(); ++n) {
 	this->summarizeBinInContainer(n+1, v_levelProfiles[iComp], v_profiles[n] );
 	v_levelProfiles[iComp].sumXResiduals_->Add(v_profiles[n].sumXResiduals_);
@@ -969,37 +975,36 @@ TrackerOfflineValidation::bookSummaryHists(TFileDirectory &tfd, const Alignable&
 						<< "No summary histogramm for hierarchy level " 
 						<< aliobjid.typeToName(subtype);      
   }
-  int32_t i_residuals_Nbins = 0, i_residuals_NbinsY = 0, i_normres_Nbins = 0;
-  double d_residual_xmin = 0, d_residual_xmax = 0, 
-         d_residual_ymin = 0, d_residual_ymax = 0,
-         d_normres_xmin  = 0, d_normres_xmax  = 0;
   DetId aliDetId = ali.id(); 
-  this->getBinning(aliDetId.subdetId(), XprimeResidual, i_residuals_Nbins , d_residual_xmin, d_residual_xmax);
-  this->getBinning(aliDetId.subdetId(), NormXprimeResidual, i_normres_Nbins , d_normres_xmin, d_normres_xmax);
-  this->getBinning(aliDetId.subdetId(), YprimeResidual, i_residuals_NbinsY, d_residual_ymin, d_residual_ymax);
+  int nbins = 0;
+  double xmin = 0., xmax = 0.;
+  this->getBinning(aliDetId.subdetId(), XprimeResidual, nbins, xmin, xmax);
   sumContainer.sumXResiduals_ = tfd.make<TH1F>(Form("h_Xprime_%s_%d",aliobjid.typeToName(alitype).c_str(),i), 
 				Form("X' Residual for %s %d in %s ",aliobjid.typeToName(alitype).c_str(),i,
 				     aliobjid.typeToName(type).c_str(),aliobjid.typeToName(subtype).c_str()),
-				i_residuals_Nbins,d_residual_xmin,d_residual_xmax);
+					       nbins, xmin, xmax);
   
+  this->getBinning(aliDetId.subdetId(), NormXprimeResidual, nbins, xmin, xmax);
   sumContainer.sumNormXResiduals_ = tfd.make<TH1F>(Form("h_NormXprime_%s_%d",aliobjid.typeToName(alitype).c_str(),i), 
 						   Form("Normalized X' Residual for %s %d in %s ",
 							aliobjid.typeToName(alitype).c_str(),i,
 							aliobjid.typeToName(type).c_str(),
 							aliobjid.typeToName(subtype).c_str()),
-						   i_normres_Nbins,d_normres_xmin,d_normres_xmax);
+						   nbins, xmin, xmax);
 
+  this->getBinning(aliDetId.subdetId(), YprimeResidual, nbins, xmin, xmax);
   sumContainer.sumYResiduals_ = tfd.make<TH1F>(Form("h_Yprime_%s_%d",aliobjid.typeToName(alitype).c_str(),i), 
 				Form("Y' Residual for %s %d in %s ",aliobjid.typeToName(alitype).c_str(),i,
 				     aliobjid.typeToName(type).c_str(),aliobjid.typeToName(subtype).c_str()),
-				i_residuals_NbinsY,d_residual_ymin,d_residual_ymax);
+					       nbins, xmin, xmax);
 
+  this->getBinning(aliDetId.subdetId(), NormYprimeResidual, nbins, xmin, xmax);
   sumContainer.sumNormYResiduals_ = tfd.make<TH1F>(Form("h_NormYprime_%s_%d",aliobjid.typeToName(alitype).c_str(),i), 
 						   Form("Normalized Y' Residual for %s %d in %s ",
 							aliobjid.typeToName(alitype).c_str(),i,
 							aliobjid.typeToName(type).c_str(),
 							aliobjid.typeToName(subtype).c_str()),
-						   i_normres_Nbins,d_normres_xmin,d_normres_xmax);
+						   nbins, xmin, xmax);
 
   
   // special case I: For DetUnits and Detwith  only one subcomponent start filling summary histos
@@ -1099,23 +1104,32 @@ TrackerOfflineValidation::bookTree(TTree &tree, struct TrackerOfflineValidation:
   tree.Branch("entries",&treeMem.entries_,"entries/i");
   tree.Branch("meanX",&treeMem.meanX_,"meanX/F");
   tree.Branch("rmsX",&treeMem.rmsX_,"rmsX/F");
+  tree.Branch("meanY",&treeMem.meanY_,"meanY/F");
+  tree.Branch("rmsY",&treeMem.rmsY_,"rmsY/F");
   tree.Branch("meanNormX",&treeMem.meanNormX_,"meanNormX/F");
   tree.Branch("rmsNormX",&treeMem.rmsNormX_,"rmsNormX/F");
+  // if (stripYResiduals_==false), these stay empty for strip, but we need it in tree for pixel
+  tree.Branch("meanNormY",&treeMem.meanNormY_,"meanNormY/F");
+  tree.Branch("rmsNormY",&treeMem.rmsNormY_,"rmsNormY/F");
+  
   //histogram names 
   tree.Branch("histNameX",&treeMem.histNameX_,"histNameX/b");
   tree.Branch("histNameNormX",&treeMem.histNameNormX_,"histNameNormX/b");
+  // if (stripYResiduals_==false), these stay empty for strip, but we need it in tree for pixel
+  tree.Branch("histNameY",&treeMem.histNameY_,"histNameY/b");
+  tree.Branch("histNameNormY",&treeMem.histNameNormY_,"histNameNormY/b");
 
   // book tree variables in local coordinates if set in cf
-    if(lCoorHistOn_) {
-      //mean and RMS values (extracted from histograms(X) on module level)
-       tree.Branch("meanLocalX",&treeMem.meanLocalX_,"meanLocalX/F");
-       tree.Branch("rmsLocalX",&treeMem.rmsLocalX_,"rmsLocalX/F");
-       tree.Branch("meanNormLocalX",&treeMem.meanNormLocalX_,"meanNormLocalX/F");
-       tree.Branch("rmsNormLocalX",&treeMem.rmsNormLocalX_,"rmsNormLocalX/F");
-       tree.Branch("histNameLocalX",&treeMem.histNameLocalX_,"histNameLocalX/b");
-       tree.Branch("histNameNormLocalX",&treeMem.histNameNormLocalX_,"histNameNormLocalX/b");
+  if(lCoorHistOn_) {
+    //mean and RMS values (extracted from histograms(X) on module level)
+    tree.Branch("meanLocalX",&treeMem.meanLocalX_,"meanLocalX/F");
+    tree.Branch("rmsLocalX",&treeMem.rmsLocalX_,"rmsLocalX/F");
+    tree.Branch("meanNormLocalX",&treeMem.meanNormLocalX_,"meanNormLocalX/F");
+    tree.Branch("rmsNormLocalX",&treeMem.rmsNormLocalX_,"rmsNormLocalX/F");
+    tree.Branch("histNameLocalX",&treeMem.histNameLocalX_,"histNameLocalX/b");
+    tree.Branch("histNameNormLocalX",&treeMem.histNameNormLocalX_,"histNameNormLocalX/b");
+  }
 
-    }
 }
 
 void 
@@ -1124,7 +1138,7 @@ TrackerOfflineValidation::fillTree(TTree &tree,const std::map<int, TrackerOfflin
  
   for(std::map<int, TrackerOfflineValidation::ModuleHistos>::const_iterator it = moduleHist_.begin(), 
 	itEnd= moduleHist_.end(); it != itEnd;++it ) { 
-    
+    treeMem.clear(); // make empty/default
     //variables concerning the tracker components/hierarchy levels
     DetId detId_ = it->first;
     treeMem.moduleId_ = detId_;
@@ -1183,25 +1197,43 @@ TrackerOfflineValidation::fillTree(TTree &tree,const std::map<int, TrackerOfflin
     treeMem.posY_   = gPModule.y();
     treeMem.posZ_   = gPModule.z();
 
-    //mean and RMS values (extracted from histograms(Xprime) on module level)
+    //mean and RMS values (extracted from histograms(Xprime on module level)
     treeMem.entries_ = static_cast<UInt_t>(it->second.ResXprimeHisto->GetEntries());
     treeMem.meanX_ = it->second.ResXprimeHisto->GetMean();
     treeMem.rmsX_ = it->second.ResXprimeHisto->GetRMS();
+
+    //mean and RMS values (extracted from histograms(normalized Xprime on module level)
     treeMem.meanNormX_ = it->second.NormResXprimeHisto->GetMean();
     treeMem.rmsNormX_ = it->second.NormResXprimeHisto->GetRMS();
+    
     treeMem.histNameX_=it->second.ResXprimeHisto->GetName();
     treeMem.histNameNormX_=it->second.NormResXprimeHisto->GetName();
+    
 
-    // fill tree variables in local coordinates if set in cf
+    // fill tree variables in local coordinates if set in cfg
     if(lCoorHistOn_) {
-
       treeMem.meanLocalX_ = it->second.ResHisto->GetMean();
       treeMem.rmsLocalX_ = it->second.ResHisto->GetRMS();
       treeMem.meanNormLocalX_ = it->second.NormResHisto->GetMean();
       treeMem.rmsNormLocalX_ = it->second.NormResHisto->GetRMS();
+
       treeMem.histNameLocalX_ = it->second.ResHisto->GetName();
       treeMem.histNameNormLocalX_=it->second.NormResHisto->GetName();
     }
+
+    // mean and RMS values in local y (extracted from histograms(normalized Yprime on module level)
+    // might exist in pixel only
+    if (it->second.ResYprimeHisto) {//(stripYResiduals_){
+      treeMem.meanY_ = it->second.ResYprimeHisto->GetMean();
+      treeMem.rmsY_ = it->second.ResYprimeHisto->GetRMS();
+      treeMem.histNameY_= it->second.ResYprimeHisto->GetName();
+    }
+    if (it->second.NormResYprimeHisto) {
+      treeMem.meanNormY_ = it->second.NormResYprimeHisto->GetMean();
+      treeMem.rmsNormY_ = it->second.NormResYprimeHisto->GetRMS();
+      treeMem.histNameNormY_= it->second.ResYprimeHisto->GetName();
+    }
+
     tree.Fill();
   }
 }
