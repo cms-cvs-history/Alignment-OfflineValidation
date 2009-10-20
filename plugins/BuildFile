@@ -13,17 +13,15 @@
 <use name=FWCore/Utilities>
 <use name=FWCore/ParameterSet>
 <use name=FWCore/ServiceRegistry>
-<use name=Geometry/DTGeometry>
-<use name=Geometry/DTGeometryBuilder>
-<use name=Geometry/CSCGeometry>
-<use name=Geometry/CSCGeometryBuilder>
 <use name=Geometry/TrackerGeometryBuilder>
 <use name=PhysicsTools/UtilAlgos>
 <use name=RecoMuon/TrackingTools>
 <use name=TrackingTools/TransientTrack>
 <use name=SimDataFormats/Track>
-<use name=SimDataFormats/GeneratorProducts>                                                                                
+<use name=SimDataFormats/GeneratorProducts>
+<use name=SimTracker/Records>
 <use name=SimTracker/TrackAssociation>
+# temporary removal<use name=DQMServices/Core>
 
 <use name=CLHEP>
 <use name=root>
