@@ -13,7 +13,7 @@
 //
 // Original Author:  Erik Butz
 //         Created:  Tue Dec 11 14:03:05 CET 2007
-// $Id: TrackerOfflineValidation.cc,v 1.32 2010/01/06 15:44:11 mussgill Exp $
+// $Id: TrackerOfflineValidation.cc,v 1.31 2009/12/11 19:08:57 hauk Exp $
 //
 //
 
@@ -384,15 +384,6 @@ TrackerOfflineValidation::bookGlobalHists(DirectoryWrapper& tfd )
   vTrackHistos_.push_back(tfd.make<TH1F>("h_tracketa",
 					 "Track #eta;#eta_{Track};Number of Tracks",
 					 90,-3.,3.));
-  vTrackHistos_.push_back(tfd.make<TH1F>("h_trackphi",
-					 "Track #phi;#phi_{Track};Number of Tracks",
-					 90,-3.15,3.15));
-  vTrackHistos_.push_back(tfd.make<TH1F>("h_trackNumberOfValidHits",
-					 "Track # of valid hits;# of valid hits _{Track};Number of Tracks",
-					40,0.,40.));
-  vTrackHistos_.push_back(tfd.make<TH1F>("h_trackNumberOfLostHits",
-					 "Track # of lost hits;# of lost hits _{Track};Number of Tracks",
-					10,0.,10.));
   vTrackHistos_.push_back(tfd.make<TH1F>("h_curvature",
 					 "Curvature #kappa;#kappa_{Track};Number of Tracks",
 					 100,-.05,.05));
@@ -413,7 +404,7 @@ TrackerOfflineValidation::bookGlobalHists(DirectoryWrapper& tfd )
 					 100,-0.01,10.));     
   vTrackHistos_.push_back(tfd.make<TH1F>("h_pt",
 					 "p_{T}^{track};p_{T}^{track} [GeV];Number of Tracks",
-					 250,0.,250));           
+					 100,0.,2500));           
   vTrackHistos_.push_back(tfd.make<TH1F>("h_ptResolution",
 					 "#delta{p_{T}/p_{T}^{track}};#delta_{p_{T}/p_{T}^{track}};Number of Tracks",
 					 100,0.,0.5));           
@@ -485,9 +476,6 @@ TrackerOfflineValidation::bookGlobalHists(DirectoryWrapper& tfd )
   vTrack2DHistos_.push_back(tfd.make<TH2F>("h2_kappa_vs_eta",
 					   "#kappa vs. #eta;#eta_{Track};#kappa",
 					   100,-3.15,3.15, 100, .0,.05));
-  vTrack2DHistos_.push_back(tfd.make<TH2F>("h2_normchi2_vs_kappa",
-					   "#kappa vs. #chi^{2}/ndof;#chi^{2}/ndof;#kappa",
-					   100,0.,10, 100,-.03,.03));
 }
 
 
@@ -781,12 +769,6 @@ TrackerOfflineValidation::analyze(const edm::Event& iEvent, const edm::EventSetu
     // Fill 1D track histos
     static const int etaindex = this->GetIndex(vTrackHistos_,"h_tracketa");
     vTrackHistos_[etaindex]->Fill(it->eta);
-    static const int phiindex = this->GetIndex(vTrackHistos_,"h_trackphi");
-    vTrackHistos_[phiindex]->Fill(it->phi);
-    static const int numOfValidHitsindex = this->GetIndex(vTrackHistos_,"h_trackNumberOfValidHits");
-    vTrackHistos_[numOfValidHitsindex]->Fill(it->numberOfValidHits);
-    static const int numOfLostHitsindex = this->GetIndex(vTrackHistos_,"h_trackNumberOfLostHits");
-    vTrackHistos_[numOfLostHitsindex]->Fill(it->numberOfLostHits);
     static const int kappaindex = this->GetIndex(vTrackHistos_,"h_curvature");
     vTrackHistos_[kappaindex]->Fill(it->kappa);
     static const int kappaposindex = this->GetIndex(vTrackHistos_,"h_curvature_pos");
@@ -852,8 +834,7 @@ TrackerOfflineValidation::analyze(const edm::Event& iEvent, const edm::EventSetu
     vTrack2DHistos_[kappaphiindex_2d]->Fill(it->phi,it->kappa);
     static const int kappaetaindex_2d = this->GetIndex(vTrack2DHistos_,"h2_kappa_vs_eta");
     vTrack2DHistos_[kappaetaindex_2d]->Fill(it->eta,it->kappa);
-    static const int normchi2kappa_2d = this->GetIndex(vTrack2DHistos_,"h2_normchi2_vs_kappa");
-    vTrack2DHistos_[normchi2kappa_2d]->Fill(it->normchi2,it->kappa); 
+     
   } // finish loop over track quantities
 
 
