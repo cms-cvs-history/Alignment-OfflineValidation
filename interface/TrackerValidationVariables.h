@@ -29,7 +29,7 @@ class TrackerValidationVariables  {
     float phi;
     float eta;
     uint32_t rawDetId;
-    std::pair<uint,float> overlapres;
+    std::pair<unsigned int,float> overlapres;
   };
   struct AVTrackStruct{
   AVTrackStruct() : p(0.),pt(0.), ptError(0.), px(0.), py(0.), pz(0.), eta(0.), phi(0.), kappa(0.),

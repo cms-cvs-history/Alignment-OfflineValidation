@@ -87,8 +87,8 @@ TrackerValidationVariables::fillHitQuantities(const edm::Event& iEvent,
       
       AVHitStruct hitStruct;
       const DetId& hit_detId = hit->geographicalId();
-      uint IntRawDetID = (hit_detId.rawId());	
-      uint IntSubDetID = (hit_detId.subdetId());
+      unsigned int IntRawDetID = (hit_detId.rawId());	
+      unsigned int IntSubDetID = (hit_detId.subdetId());
       
       if(IntSubDetID == 0) continue;
 
