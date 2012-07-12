@@ -50,7 +50,6 @@
 #include <fstream>
 
 TrackerGeometryCompare::TrackerGeometryCompare(const edm::ParameterSet& cfg) :
-  m_params( cfg ),
   referenceTracker(0),
   dummyTracker(0),
   currentTracker(0),
@@ -64,6 +63,7 @@ TrackerGeometryCompare::TrackerGeometryCompare(const edm::ParameterSet& cfg) :
   _inputTree2(0),
   firstEvent_(true)
 {
+	
 	//input is ROOT
 	_inputFilename1 = cfg.getUntrackedParameter< std::string > ("inputROOTFile1");
 	_inputFilename2 = cfg.getUntrackedParameter< std::string > ("inputROOTFile2");
@@ -84,9 +84,10 @@ TrackerGeometryCompare::TrackerGeometryCompare(const edm::ParameterSet& cfg) :
 	_weightByIdFile = cfg.getUntrackedParameter< std::string > ("weightByIdFile");
 	
 	//setting the levels being used in the geometry comparator
+	AlignableObjectId dummy;
 	edm::LogInfo("TrackerGeometryCompare") << "levels: " << levels.size();
 	for (unsigned int l = 0; l < levels.size(); ++l){
-		theLevels.push_back(AlignableObjectId::stringToId(levels[l]));
+		theLevels.push_back( dummy.nameToType(levels[l]));
 		edm::LogInfo("TrackerGeometryCompare") << "level: " << levels[l];
 	}
 	
@@ -296,19 +297,9 @@ void TrackerGeometryCompare::createROOTGeometry(const edm::EventSetup& iSetup){
 	
 	edm::ESHandle<Alignments> globalPositionRcd;
 	iSetup.get<TrackerDigiGeometryRecord>().getRecord<GlobalPositionRcd>().get(globalPositionRcd);
-
-	const edm::ParameterSet tkGeomConsts( m_params.getParameter<edm::ParameterSet>( "trackerGeometryConstants" ));
 	
 	//reference tracker
-	TrackerGeometry* theRefTracker = trackerBuilder.build(&*theGeometricDet,
-							      tkGeomConsts.getParameter<bool>("upgradeGeometry"),
-							      tkGeomConsts.getParameter<int>( "ROWS_PER_ROC" ),
-							      tkGeomConsts.getParameter<int>( "COLS_PER_ROC" ),
-							      tkGeomConsts.getParameter<int>( "BIG_PIX_PER_ROC_X" ),
-							      tkGeomConsts.getParameter<int>( "BIG_PIX_PER_ROC_Y" ),
-							      tkGeomConsts.getParameter<int>( "ROCS_X" ),
-							      tkGeomConsts.getParameter<int>( "ROCS_Y" ));
-
+	TrackerGeometry* theRefTracker = trackerBuilder.build(&*theGeometricDet); 
 	if (_inputFilename1 != "IDEAL"){
 		GeometryAligner aligner1;
 		aligner1.applyAlignments<TrackerGeometry>( &(*theRefTracker), &(*alignments1), &(*alignmentErrors1),
@@ -317,15 +308,7 @@ void TrackerGeometryCompare::createROOTGeometry(const edm::EventSetup& iSetup){
 	referenceTracker = new AlignableTracker(&(*theRefTracker));
 
 	//currernt tracker
-	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet,
-							      tkGeomConsts.getParameter<bool>("upgradeGeometry"),
-							      tkGeomConsts.getParameter<int>( "ROWS_PER_ROC" ),
-							      tkGeomConsts.getParameter<int>( "COLS_PER_ROC" ),
-							      tkGeomConsts.getParameter<int>( "BIG_PIX_PER_ROC_X" ),
-							      tkGeomConsts.getParameter<int>( "BIG_PIX_PER_ROC_Y" ),
-							      tkGeomConsts.getParameter<int>( "ROCS_X" ),
-							      tkGeomConsts.getParameter<int>( "ROCS_Y" ));
-
+	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet); 
 	if (_inputFilename2 != "IDEAL"){
 		GeometryAligner aligner2;
 		aligner2.applyAlignments<TrackerGeometry>( &(*theCurTracker), &(*alignments2), &(*alignmentErrors2),
@@ -414,7 +397,8 @@ void TrackerGeometryCompare::setCommonTrackerSystem(){
 
 	edm::LogInfo("TrackerGeometryCompare") << "Setting Common Tracker System....";
 	
-	_commonTrackerLevel = AlignableObjectId::stringToId(_setCommonTrackerSystem);
+	AlignableObjectId dummy;
+	_commonTrackerLevel = dummy.nameToType(_setCommonTrackerSystem);
 		
 	diffCommonTrackerSystem(referenceTracker, currentTracker);
 	
