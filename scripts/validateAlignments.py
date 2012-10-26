@@ -157,6 +157,19 @@ class BetterConfigParser(ConfigParser.ConfigParser):
 class Alignment:
     def __init__(self, name, config, runGeomComp = "1"):
         section = "alignment:%s"%name
+
+        # Check for typos or wrong parameters
+        knownSimpleParameters = [ 'globaltag', 'style', 'color' ]
+        knownKeywords = [ 'condition' ]
+        for option in config.options( section ):
+            if option in knownSimpleParameters:
+                continue
+            elif option.split()[0] in knownKeywords:
+                continue
+            else:
+                raise StandardError, ("Invalid or unknown parameter '%s' in "
+                                      "section '%s'!")%( option, section )
+
         self.name = name
         self.runGeomComp = runGeomComp
         if not config.has_section( section ):
@@ -177,6 +190,7 @@ class Alignment:
                                         "connectString": conditionParameters[0].strip(),
                                         "tagName": conditionParameters[1].strip(),
                                         "labelName": conditionParameters[2].strip()})
+
         # removed backward compatibility
         self.dbpath = ""
         self.tag = ""
@@ -409,9 +423,6 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
         if not randomWorkdirPart == None:
             self.randomWorkdirPart = randomWorkdirPart
         self.referenceAlignment = referenceAlignment
-        # self.__compares = {}
-        # allCompares = config.getCompares()
-        self.__compares = config.getCompares()
         try:
             self.jobmode = config.getResultingSection( "compare:"+self.name)["jobmode"]
         except KeyError:
@@ -420,12 +431,12 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
         if not self.referenceAlignment == "IDEAL":
             referenceName = self.referenceAlignment.name
 
-        # #test if all compare sections are present
-        # for compareName in self.alignmentToValidate.compareTo[ referenceName ]:
-        #     if compareName in allCompares:
-        #         self.__compares[compareName] = allCompares[compareName]
-        #     else:
-        #         raise StandardError, "could not find compare section '%s' in '%s'"%(compareName, allCompares)                  
+        allCompares = config.getCompares()
+        self.__compares = {}
+        if valName in allCompares:
+            self.__compares[valName] = allCompares[valName]
+        else:
+            raise StandardError, "Could not find compare section '%s' in '%s'"%(valName, allCompares)
         self.copyImages = copyImages
     
     def getRepMap(self, alignment = None):
@@ -454,12 +465,13 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
     def createConfiguration(self, path ):
         # self.__compares
         repMap = self.getRepMap()
-        cfgs = {"TkAlCompareToNTuple.%s_cfg.py"%self.alignmentToValidate.name:
+        cfgs = { "TkAlCompareToNTuple.%s.%s_cfg.py"%(
+            self.alignmentToValidate.name, self.randomWorkdirPart ):
                 replaceByMap( configTemplates.intoNTuplesTemplate, repMap)}
         if not self.referenceAlignment == "IDEAL":
             referenceRepMap = self.getRepMap( self.referenceAlignment )
             cfgFileName = "TkAlCompareToNTuple.%s.%s_cfg.py"%(
-                self.referenceAlignment.name, self.randomWorkdirPart)
+                self.referenceAlignment.name, self.randomWorkdirPart )
             cfgs[ cfgFileName ] = replaceByMap( configTemplates.intoNTuplesTemplate, referenceRepMap)
 
         cfgSchedule = cfgs.keys()
@@ -481,13 +493,15 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
     def createScript(self, path):    
         repMap = self.getRepMap()    
         repMap["runComparisonScripts"] = ""
-        scriptName = replaceByMap("TkAlGeomCompare..oO[name]Oo..sh",repMap)
+        scriptName = replaceByMap( "TkAlGeomCompare.%s..oO[name]Oo..sh"%( self.name ),
+                                   repMap)
         for name in self.__compares:
             if  '"DetUnit"' in self.__compares[name][0].split(","):
                 repMap["runComparisonScripts"] += "root -b -q 'comparisonScript.C(\".oO[workdir]Oo./.oO[name]Oo..Comparison_common"+name+".root\",\".oO[workdir]Oo./\")'\n"
                 if  self.copyImages:
                    repMap["runComparisonScripts"] += "rfmkdir -p .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images\n"
                    repMap["runComparisonScripts"] += "find .oO[workdir]Oo. -maxdepth 1 -name \"plot*.eps\" -print | xargs -I {} bash -c \"rfcp {} .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images/\" \n"
+                   repMap["runComparisonScripts"] += "find .oO[workdir]Oo. -maxdepth 1 -name \"plot*.pdf\" -print | xargs -I {} bash -c \"rfcp {} .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images/\" \n"
                    repMap["runComparisonScripts"] += "rfmkdir -p .oO[workdir]Oo./.oO[name]Oo.."+name+"_ArrowPlots\n"
                    repMap["runComparisonScripts"] += "root -b -q 'makeArrowPlots.C(\".oO[workdir]Oo./.oO[name]Oo..Comparison_common"+name+".root\",\".oO[workdir]Oo./.oO[name]Oo.."+name+"_ArrowPlots\")'\n"
                    repMap["runComparisonScripts"] += "rfmkdir -p .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images/ArrowPlots\n"
@@ -641,14 +655,18 @@ class OfflineValidationParallel(OfflineValidation):
             if self.general["offlineModuleLevelHistsTransient"] == "True":
                 raise StandardError, "To be able to merge results when running parallel jobs, set offlineModuleLevelHistsTransient to false."
         for index in range(numberParallelJobs):
-            cfgName = "%s.%s_%s_cfg.py"%( configBaseName, self.alignmentToValidate.name, str(index) )
+            cfgName = "%s.%s.%s_%s_cfg.py"%( configBaseName, self.name, self.alignmentToValidate.name, str(index) )
             repMap = self.getRepMap()
             # in this parallel job, skip index*(maxEvents/nJobs) events from the beginning
             # (first index is zero, so no skipping for a single job)
             # and use _index_ in the name of the output file
             repMap.update({"nIndex": str(index)})
+            # Create the result file directly to datadir since should not use /tmp/
+            # see https://cern.service-now.com/service-portal/article.do?n=KB0000484
             repMap.update({
-                "outputFile": replaceByMap( ".oO[workdir]Oo./AlignmentValidation_.oO[name]Oo._.oO[nIndex]Oo..root", repMap )
+                "outputFile": replaceByMap( ".oO[datadir]Oo./AlignmentValidation_"
+                                            + self.name +
+                                            "_.oO[name]Oo._.oO[nIndex]Oo..root", repMap )
                 })
             repMap["outputFile"] = os.path.expandvars( repMap["outputFile"] )
             repMap["outputFile"] = os.path.abspath( repMap["outputFile"] )
@@ -665,7 +683,7 @@ class OfflineValidationParallel(OfflineValidation):
         returnValue = []
         numJobs = int( self.general["parallelJobs"] )
         for index in range(numJobs):
-            scriptName = "%s.%s_%s.sh"%(scriptBaseName, self.alignmentToValidate.name, str(index) )
+            scriptName = "%s.%s.%s_%s.sh"%(scriptBaseName, self.name, self.alignmentToValidate.name, str(index) )
             repMap = GenericValidation.getRepMap(self)
             repMap["nIndex"]=""
             repMap["nIndex"]=str(index)
@@ -683,7 +701,10 @@ class OfflineValidationParallel(OfflineValidation):
     def getRepMap(self, alignment = None):
         repMap = OfflineValidation.getRepMap(self, alignment) 
         repMap.update({
-            "nJobs": self.general["parallelJobs"]
+            "nJobs": self.general["parallelJobs"],
+            "offlineValidationFileOutput":
+            configTemplates.offlineParallelFileOutputTemplate,
+            "nameValidation": self.name
             })
         # In case maxevents==-1, set number of parallel jobs to 1
         # since we cannot calculate number of events for each
@@ -908,6 +929,9 @@ class ZMuMuValidation(GenericValidation):
                 })
         return repMap
 
+# Needed for more than one geometry comparison for one alignment
+alignRandDict = {}
+
 class ValidationJob:
     def __init__( self, validation, config, options ):
         if validation[1] == "":
@@ -961,9 +985,19 @@ class ValidationJob:
                 secondAlign = secondAlignName
             else:
                 secondAlign = Alignment( secondAlignName, config, secondRun )
+            # check if alignment was already compared previously
+            try:
+                randomWorkdirPart = alignRandDict[firstAlignName]
+            except KeyError:
+                randomWorkdirPart = None
+                
             validation = GeometryComparison( name, firstAlign, secondAlign,
                                              config,
-                                             self.__commandLineOptions.getImages )
+                                             self.__commandLineOptions.getImages,
+                                             randomWorkdirPart )
+            alignRandDict[firstAlignName] = validation.randomWorkdirPart
+            if not secondAlignName == "IDEAL":
+                alignRandDict[secondAlignName] = validation.randomWorkdirPart
         elif valType == "offline":
             # validation = OfflineValidation( name, alignments, config, options )
             validation = OfflineValidation( name, 
@@ -1216,6 +1250,17 @@ def main(argv = None):
     config.set("general","workdir",os.path.join(general["workdir"],options.Name) )
     config.set("general","datadir",os.path.join(general["datadir"],options.Name) )
     config.set("general","logdir",os.path.join(general["logdir"],options.Name) )
+
+    # clean up of log directory to avoid cluttering with files with different
+    # random numbers for geometry comparison
+    if os.path.isdir( config.getGeneral()["logdir"] ):
+        for file in os.listdir( config.getGeneral()["logdir"] ):
+            if ( 'stderr' in file.split( '.' )
+                 or 'stdout' in file.split( '.' ) ):
+                continue
+            else:
+                os.remove( os.path.join( config.getGeneral()["logdir"], file ) )
+    
     if not os.path.exists( outPath ):
         os.makedirs( outPath )
     elif not os.path.isdir( outPath ):
