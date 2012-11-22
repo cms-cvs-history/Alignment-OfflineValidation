@@ -6,6 +6,7 @@ import ConfigParser
 import optparse
 import datetime
 from pprint import pprint
+import shutil
 
 import configTemplates #BETA as configTemplates
 
@@ -71,22 +72,19 @@ class BetterConfigParser(ConfigParser.ConfigParser):
         return False
         
     def __updateDict( self, dictionary, section ):
+        result = dictionary
         try:
             for option in self.options( section ):
-                dictionary[option] = self.get( section, option )
+                result[option] = self.get( section, option )
             if "local"+section.title() in self.sections():
                 for option in self.options( "local"+section.title() ):
-                    dictionary[option] = self.get( "local"+section.title(),
+                    result[option] = self.get( "local"+section.title(),
                                                    option )
-#                 for option in dictionary:
-#                     if option in [item[0] for item in \
-#                                   self.items( "local"+section.title() )]:
-#                         dictionary[option] = self.get( "local"+section.title(),
-#                                                        option )
         except ConfigParser.NoSectionError, section:
             raise StandardError, ("%s in configuration files. This section is "
                                   "mandatory."
                                   %( str( section ).replace( ":", "", 1 ) ) )
+        return result
 
     def getResultingSection( self, section, defaultDict = {}, demandPars = [] ):
         result = defaultDict
@@ -95,15 +93,12 @@ class BetterConfigParser(ConfigParser.ConfigParser):
                 result[option] = self.get( section, option )
             except ConfigParser.NoOptionError, globalSectionError:
                 globalSection = str( globalSectionError ).split( "'" )[-2]
-                print section
-                print section.split(":")
                 splittedSectionName = section.split( ":" )
                 if len( splittedSectionName ) > 1:
                     localSection = ("local"+section.split( ":" )[0].title()+":"
                                     +section.split(":")[1])
                 else:
                     localSection = ("local"+section.split( ":" )[0].title())
-                print localSection,option
                 if self.has_section( localSection ):
                     try:
                         result[option] = self.get( localSection, option )
@@ -121,8 +116,7 @@ class BetterConfigParser(ConfigParser.ConfigParser):
                                                  .replace( ":", "", 1 )
                                              )
                                           )
-                    
-        self.__updateDict( result, section )
+        result = self.__updateDict( result, section )
         return result
 
     def getAlignments( self ):
@@ -147,8 +141,7 @@ class BetterConfigParser(ConfigParser.ConfigParser):
             "jobmode":"interactive",
             "workdir":os.getcwd(),
             "datadir":os.getcwd(),
-            "logdir":os.getcwd()# ,
-#             "parallelJobs":"1"
+            "logdir":os.getcwd()
             }
         general = self.getResultingSection( "general", defaultDict = defaults )
         return general
@@ -157,80 +150,57 @@ class BetterConfigParser(ConfigParser.ConfigParser):
 class Alignment:
     def __init__(self, name, config, runGeomComp = "1"):
         section = "alignment:%s"%name
+        if not config.has_section( section ):
+            raise StandardError, ("section %s not found. Please define the "
+                                  "alignment!"%section)
+
+        # Check for typos or wrong parameters
+        knownSimpleParameters = [ 'globaltag', 'style', 'color' ]
+        knownKeywords = [ 'condition' ]
+        for option in config.options( section ):
+            if option in knownSimpleParameters:
+                continue
+            elif option.split()[0] in knownKeywords:
+                continue
+            else:
+                raise StandardError, ("Invalid or unknown parameter '%s' in "
+                                      "section '%s'!")%( option, section )
+
         self.name = name
         self.runGeomComp = runGeomComp
-        if not config.has_section( section ):
-            raise StandardError, "section %s not found. Please define the alignment!"%section
-        # self.mode = config.get(section, "mode").split()
         self.globaltag = config.get( section, "globaltag" )
- 
-        self.conditions = []
-        for option in config.options( section ):
-            if option.startswith( "condition " ):
-                rcdName = option.split( "condition " )[1]
-                conditionParameters = config.get( section, option ).split( "," )
-                if len( conditionParameters ) < 2:
-                    raise StandardError, "'%s' is used with too few arguments. A connect_string and a tag are required!"%( option )
-                if len( conditionParameters ) < 3:
-                    conditionParameters.append( "" )
-                self.conditions.append({"rcdName": rcdName.strip(),
-                                        "connectString": conditionParameters[0].strip(),
-                                        "tagName": conditionParameters[1].strip(),
-                                        "labelName": conditionParameters[2].strip()})
-        # removed backward compatibility
-        self.dbpath = ""
-        self.tag = ""
-#         if "TrackerAlignmentRcd" not in [ condition["rcdName"] \
-#                                       for condition in self.conditions ]:
-#             self.dbpath = config.get(section, "dbpath")
-#             self.tag = config.get(section,"tag")
-#             self.__testDbExist( self.dbpath )
-#         else:
-#             self.dbpath = ""
-#             self.tag = ""
-
-        self.errordbpath = "frontier://FrontierProd/CMS_COND_31X_FROM21X"
-        self.errortag = "TrackerIdealGeometryErrors210_mc"
-        if config.has_option(section,"errordbpath") and config.has_option(section,"errortag"):
-            self.errordbpath = config.get(section, "errordbpath")
-            self.__testDbExist( self.errordbpath )
-            self.errortag = config.get(section,"errortag")
-        else:
-            if config.has_option(section,"errordbpath") or config.has_option(section,"errortag"):
-                raise StandardError, "in alignment:%s you have to provide either both errordbpath _and_ errortag or none of both."%name
-        if "TrackerAlignmentErrorRcd" in \
-               [ condition["rcdName"] for condition in self.conditions ]\
-               and config.has_option(section,"errordbpath"):
-            raise StandardError,("Please do not use the old (errordbpath, "
-                                 "errortag) and new syntax for configuring the"
-                                 " APE at the same time.\nThe new syntax is "
-                                 "'condition TrackerAlignmentErrorRcd: "
-                                 "<connect_string>, <tag> (, <label>)'")
-                                 
-        
+        self.conditions = self.__getConditions( config, section )
         self.color = config.get(section,"color")
         self.style = config.get(section,"style")
 
+        # - removed backward compatibility
+        # - keep the following lines, until the templates are adjusted
+        #   to the new syntax
+        self.dbpath = ""
+        self.tag = ""
+        self.errordbpath = "frontier://FrontierProd/CMS_COND_31X_FROM21X"
+        self.errortag = "TrackerIdealGeometryErrors210_mc"
         self.kinksAndBows = ""
         self.kbdbpath = ""
         self.kbtag = ""
-        if config.has_option(section,"kbdbpath") and config.has_option(section,"kbtag"):
-            self.kinksAndBows = configTemplates.kinksAndBowsTemplate
-            self.kbdbpath = config.get(section, "kbdbpath")
-            self.__testDbExist( self.kbdbpath )
-            self.kbtag = config.get(section,"kbtag")
-        else:
-            if config.has_option(section,"kbdbpath") or config.has_option(section,"kbtag"):
-                raise StandardError, "in alignment:%s you have to provide either both kbdbpath _and_ kbtag or none of both."%name
-        if "TrackerSurfaceDeformationRcd" in \
-               [ condition["rcdName"] for condition in self.conditions ]\
-               and config.has_option(section,"kbdbpath"):
-            raise StandardError,("Please do not use the old (errordbpath, "
-                                 "errortag) and new syntax for configuring the"
-                                 " kinks and bows at the same time.\nThe new "
-                                 "syntax is "
-                                 "'condition TrackerSurfaceDeformationRcd: "
-                                 "<connect_string>, <tag> (, <label>)'")
+        
+    def __getConditions( self, theConfig, theSection ):
+        conditions = []
+        for option in theConfig.options( theSection ):
+            if option.startswith( "condition " ):
+                rcdName = option.split( "condition " )[1]
+                condParameters = theConfig.get( theSection, option ).split( "," )
+                if len( condParameters ) < 2:
+                    raise StandardError, ("'%s' is used with too few arguments."
+                                          "A connect_string and a tag are "
+                                          "required!"%option)
+                if len( condParameters ) < 3:
+                    condParameters.append( "" )
+                conditions.append({"rcdName": rcdName.strip(),
+                                   "connectString": condParameters[0].strip(),
+                                   "tagName": condParameters[1].strip(),
+                                   "labelName": condParameters[2].strip()})
+        return conditions
 
     def __testDbExist(self, dbpath):
         #FIXME delete return to end train debuging
@@ -248,7 +218,7 @@ class Alignment:
                 if mode in restriction:
                     result.append( mode )
             self.mode = result
-        
+
     def getRepMap( self ):
         result = {
             "name": self.name,
@@ -267,28 +237,16 @@ class Alignment:
         return result  
 
     def getLoadTemplate(self):
-        """This function still exists only for backward compatibility to the
-           old syntax for overriding the global tag conditions.
+        """This function still exists only for historical reasons.
+           Will be removed, when the templates are adjusted.
            """
-        # removed backward compatibility
         return ""
-#         if "TrackerAlignmentRcd" in [ condition["rcdName"] \
-#                                       for condition in self.conditions ]:
-#             return ""
-#         else:
-#             return replaceByMap( configTemplates.dbLoadTemplate,
-#                                  self.getRepMap() )
 
     def getAPETemplate(self):
-        """This function still exists only for backward compatibility to the
-           old syntax for overriding the global tag conditions.
+        """This function still exists only for historical reasons.
+           Will be removed, when the templates are adjusted.
            """
-        if "TrackerAlignmentErrorRcd" in [ condition["rcdName"] \
-                                           for condition in self.conditions ]:
-            return ""
-        else:
-            return replaceByMap( configTemplates.APETemplate,
-                                 self.getRepMap() )
+        return ""
 
     def getConditions(self):
         """This function creates the configuration snippet to override
@@ -313,9 +271,7 @@ class Alignment:
 
 class GenericValidation:
     defaultReferenceName = "DEFAULT"
-
     def __init__(self, valName, alignment, config):
-    # def __init__(self, alignment, config):
         import random
         self.name = valName
         self.alignmentToValidate = alignment
@@ -323,7 +279,6 @@ class GenericValidation:
         self.randomWorkdirPart = "%0i"%random.randint(1,10e9)
         self.configFiles = []
         self.filesToCompare = {}
-#        self.configFileSchedule = None
         self.jobmode = self.general["jobmode"]
 
     def getRepMap(self, alignment = None):
@@ -332,21 +287,20 @@ class GenericValidation:
         result = alignment.getRepMap()
         result.update( self.general )
         result.update({
-#                 "nJobs": self.general["parallelJobs"],
-                "workdir": os.path.join(self.general["workdir"],self.randomWorkdirPart),
+                "workdir": os.path.join( self.general["workdir"],
+                                         self.randomWorkdirPart ),
                 "datadir": self.general["datadir"],
                 "logdir": self.general["logdir"],
                 "dbLoad": alignment.getLoadTemplate(),
                 "APE": alignment.getAPETemplate(),
-                "CommandLineTemplate": """#run configfile and post-proccess it
-cmsRun %(cfgFile)s
-%(postProcess)s """,
+                "CommandLineTemplate": ("#run configfile and post-proccess it\n"
+                                        "cmsRun %(cfgFile)s\n"
+                                        "%(postProcess)s "),
                 "CMSSW_BASE": os.environ['CMSSW_BASE'],
                 "SCRAM_ARCH": os.environ['SCRAM_ARCH'],
                 "alignmentName": alignment.name,
                 "condLoad": alignment.getConditions()
                 })
-
         return result
 
     def getCompareStrings( self, requestId = None ):
@@ -395,6 +349,10 @@ cmsRun %(cfgFile)s
             os.chmod(script,0755)
         return self.scriptFiles
 
+    def createCrabCfg(self, fileContents, path ):        
+        self.crabConfigurationFiles =  GenericValidation.createFiles( self, fileContents, path )
+        return self.crabConfigurationFiles
+
     
 class GeometryComparison(GenericValidation):
     """
@@ -409,23 +367,20 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
         if not randomWorkdirPart == None:
             self.randomWorkdirPart = randomWorkdirPart
         self.referenceAlignment = referenceAlignment
-        # self.__compares = {}
-        # allCompares = config.getCompares()
-        self.__compares = config.getCompares()
         try:
-            self.jobmode = config.getResultingSection( "compare:"+self.name)["jobmode"]
-        except KeyError:
+            self.jobmode = config.get( "compare:"+self.name, "jobmode" )
+        except ConfigParser.NoOptionError:
             pass
         referenceName = "IDEAL"
         if not self.referenceAlignment == "IDEAL":
             referenceName = self.referenceAlignment.name
 
-        # #test if all compare sections are present
-        # for compareName in self.alignmentToValidate.compareTo[ referenceName ]:
-        #     if compareName in allCompares:
-        #         self.__compares[compareName] = allCompares[compareName]
-        #     else:
-        #         raise StandardError, "could not find compare section '%s' in '%s'"%(compareName, allCompares)                  
+        allCompares = config.getCompares()
+        self.__compares = {}
+        if valName in allCompares:
+            self.__compares[valName] = allCompares[valName]
+        else:
+            raise StandardError, "Could not find compare section '%s' in '%s'"%(valName, allCompares)
         self.copyImages = copyImages
     
     def getRepMap(self, alignment = None):
@@ -441,9 +396,7 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
                                  "ROOTGeometry.root"),
             "referenceGeometry": "IDEAL", # will be replaced later
                                           #  if not compared to IDEAL
-            "reference": referenceName# ,
-            # # Keep the following parameters for backward compatibility
-            # "GlobalTag": self.general["globaltag"]
+            "reference": referenceName
             })
         if not referenceName == "IDEAL":
             repMap["referenceGeometry"] = (".oO[workdir]Oo./.oO[reference]Oo."
@@ -454,12 +407,13 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
     def createConfiguration(self, path ):
         # self.__compares
         repMap = self.getRepMap()
-        cfgs = {"TkAlCompareToNTuple.%s_cfg.py"%self.alignmentToValidate.name:
+        cfgs = { "TkAlCompareToNTuple.%s.%s_cfg.py"%(
+            self.alignmentToValidate.name, self.randomWorkdirPart ):
                 replaceByMap( configTemplates.intoNTuplesTemplate, repMap)}
         if not self.referenceAlignment == "IDEAL":
             referenceRepMap = self.getRepMap( self.referenceAlignment )
             cfgFileName = "TkAlCompareToNTuple.%s.%s_cfg.py"%(
-                self.referenceAlignment.name, self.randomWorkdirPart)
+                self.referenceAlignment.name, self.randomWorkdirPart )
             cfgs[ cfgFileName ] = replaceByMap( configTemplates.intoNTuplesTemplate, referenceRepMap)
 
         cfgSchedule = cfgs.keys()
@@ -481,13 +435,15 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
     def createScript(self, path):    
         repMap = self.getRepMap()    
         repMap["runComparisonScripts"] = ""
-        scriptName = replaceByMap("TkAlGeomCompare..oO[name]Oo..sh",repMap)
+        scriptName = replaceByMap( "TkAlGeomCompare.%s..oO[name]Oo..sh"%( self.name ),
+                                   repMap)
         for name in self.__compares:
             if  '"DetUnit"' in self.__compares[name][0].split(","):
                 repMap["runComparisonScripts"] += "root -b -q 'comparisonScript.C(\".oO[workdir]Oo./.oO[name]Oo..Comparison_common"+name+".root\",\".oO[workdir]Oo./\")'\n"
                 if  self.copyImages:
                    repMap["runComparisonScripts"] += "rfmkdir -p .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images\n"
                    repMap["runComparisonScripts"] += "find .oO[workdir]Oo. -maxdepth 1 -name \"plot*.eps\" -print | xargs -I {} bash -c \"rfcp {} .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images/\" \n"
+                   repMap["runComparisonScripts"] += "find .oO[workdir]Oo. -maxdepth 1 -name \"plot*.pdf\" -print | xargs -I {} bash -c \"rfcp {} .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images/\" \n"
                    repMap["runComparisonScripts"] += "rfmkdir -p .oO[workdir]Oo./.oO[name]Oo.."+name+"_ArrowPlots\n"
                    repMap["runComparisonScripts"] += "root -b -q 'makeArrowPlots.C(\".oO[workdir]Oo./.oO[name]Oo..Comparison_common"+name+".root\",\".oO[workdir]Oo./.oO[name]Oo.."+name+"_ArrowPlots\")'\n"
                    repMap["runComparisonScripts"] += "rfmkdir -p .oO[datadir]Oo./.oO[name]Oo..Comparison_common"+name+"_Images/ArrowPlots\n"
@@ -502,8 +458,6 @@ copyImages indicates wether plot*.eps files should be copied back from the farm
         repMap["CommandLine"]=""
 
         for cfg in self.configFiles:
-#find . -maxdepth 1 -name \"LOGFILE_*_.oO[name]Oo..log\" -print | xargs -I {} bash -c 'echo \"*** \";echo \"**   {}\";echo \"***\" ; cat {}' > .oO[workdir]Oo./LOGFILE_GeomComparision_.oO[name]Oo..log
-#cd .oO[workdir]Oo.
             postProcess = "rfcp .oO[workdir]Oo./*.db .oO[datadir]Oo.\n"
             repMap["CommandLine"]+= repMap["CommandLineTemplate"]%{"cfgFile":cfg,
                                                                    "postProcess":postProcess
@@ -516,6 +470,10 @@ cd .oO[workdir]Oo.
         scripts = {scriptName: replaceByMap( configTemplates.scriptTemplate, repMap ) }  
         return GenericValidation.createScript(self, scripts, path)
 
+    def createCrabCfg( self ):
+        raise StandardError, ("Parallelization not supported for geometry "
+                              "comparison. Please choose another 'jobmode'.")
+
         
 class OfflineValidation(GenericValidation):
     def __init__(self, valName, alignment,config):
@@ -527,10 +485,12 @@ class OfflineValidation(GenericValidation):
             "offlineModuleLevelHistsTransient":"False",
             "offlineModuleLevelProfiles":"False",
             "OfflineTreeBaseDir":"TrackHitFilter",
-            "SurfaceShapes":"none"
+            "SurfaceShapes":"none",
+            "jobmode":self.jobmode,
+            "runRange":"",
+            "JSON":""
             }
-        mandatories = [ "dataset", "maxevents"# , "globaltag"
-                        , "trackcollection" ]
+        mandatories = [ "dataset", "maxevents", "trackcollection" ]
         if not config.has_section( "offline:"+self.name ):
             offline = config.getResultingSection( "general",
                                                   defaultDict = defaults,
@@ -540,10 +500,7 @@ class OfflineValidation(GenericValidation):
                                                   defaultDict = defaults,
                                                   demandPars = mandatories )
         self.general.update( offline )
-        try:
-            self.jobmode = config.getResultingSection( "offline:"+self.name)["jobmode"]
-        except KeyError:
-            pass
+        self.jobmode = self.general["jobmode"]
     
     def createConfiguration(self, path,
                             configBaseName = "TkAlOfflineValidation" ):
@@ -569,6 +526,22 @@ class OfflineValidation(GenericValidation):
                                              repMap ) }
         return GenericValidation.createScript(self, scripts, path)
 
+    def createCrabCfg( self, path,
+                       crabCfgBaseName = "TkAlOfflineValidation"  ):
+        crabCfgName = "crab.%s.%s.%s.cfg"%( crabCfgBaseName, self.name,
+                                            self.alignmentToValidate.name )
+        repMap = self.getRepMap()
+        repMap["script"] = "dummy_script.sh"
+        repMap["crabOutputDir"] = os.path.basename( path )
+        repMap["crabWorkingDir"] = crabCfgName.split( '.cfg' )[0]
+        self.crabWorkingDir = repMap["crabWorkingDir"]
+        repMap["numberOfJobs"] = self.general["parallelJobs"]
+        repMap["cfgFile"] = self.configFiles[0]
+        repMap["queue"] = self.jobmode.split( ',' )[1].split( '-q' )[1]
+        crabCfg = {crabCfgName: replaceByMap( configTemplates.crabCfgTemplate,
+                                              repMap ) }
+        return GenericValidation.createCrabCfg( self, crabCfg, path )
+
     def getRepMap(self, alignment = None):
         repMap = GenericValidation.getRepMap(self, alignment)
         repMap.update({
@@ -585,13 +558,15 @@ class OfflineValidation(GenericValidation):
             "offlineValidationFileOutput":
             configTemplates.offlineStandaloneFileOutputTemplate,
             # Keep the following parameters for backward compatibility
-            "TrackCollection": self.general["trackcollection"]# ,
-            # "GlobalTag": self.general["globaltag"]
+            "TrackCollection": self.general["trackcollection"]
             })
         repMap["outputFile"] = os.path.expandvars( repMap["outputFile"] )
         repMap["outputFile"] = os.path.abspath( repMap["outputFile"] )
         repMap["resultFile"] = os.path.expandvars( repMap["resultFile"] )
         repMap["resultFile"] = os.path.abspath( repMap["resultFile"] )
+        if self.jobmode.split( ',' )[0] == "crab":
+            repMap["outputFile"] = os.path.basename( repMap["outputFile"] )
+            repMap["resultFile"] = os.path.basename( repMap["resultFile"] )
 
         return repMap
 
@@ -609,12 +584,20 @@ class OfflineValidation(GenericValidation):
                                  '%(color)s, %(style)s);\n')%repMap
         return validationsSoFar
 
+    def appendToMerge( self, mergesSoFar = "" ):
+        """
+        append all merges here
+        """
+        repMap = self.getRepMap()
+        mergesSoFar += replaceByMap( configTemplates.mergeOfflineParallelResults, repMap )
+        return mergesSoFar
 
 class OfflineValidationParallel(OfflineValidation):
     def __init__(self, valName, alignment,config):
         OfflineValidation.__init__(self, valName, alignment, config)
         defaults = {
-            "parallelJobs":"1"
+            "parallelJobs":"1",
+            "jobmode":self.jobmode
             }
         if not config.has_section( "offline:"+self.name ):
             offline = config.getResultingSection( "general",
@@ -641,14 +624,18 @@ class OfflineValidationParallel(OfflineValidation):
             if self.general["offlineModuleLevelHistsTransient"] == "True":
                 raise StandardError, "To be able to merge results when running parallel jobs, set offlineModuleLevelHistsTransient to false."
         for index in range(numberParallelJobs):
-            cfgName = "%s.%s_%s_cfg.py"%( configBaseName, self.alignmentToValidate.name, str(index) )
+            cfgName = "%s.%s.%s_%s_cfg.py"%( configBaseName, self.name, self.alignmentToValidate.name, str(index) )
             repMap = self.getRepMap()
             # in this parallel job, skip index*(maxEvents/nJobs) events from the beginning
             # (first index is zero, so no skipping for a single job)
             # and use _index_ in the name of the output file
             repMap.update({"nIndex": str(index)})
+            # Create the result file directly to datadir since should not use /tmp/
+            # see https://cern.service-now.com/service-portal/article.do?n=KB0000484
             repMap.update({
-                "outputFile": replaceByMap( ".oO[workdir]Oo./AlignmentValidation_.oO[name]Oo._.oO[nIndex]Oo..root", repMap )
+                "outputFile": replaceByMap( ".oO[datadir]Oo./AlignmentValidation_"
+                                            + self.name +
+                                            "_.oO[name]Oo._.oO[nIndex]Oo..root", repMap )
                 })
             repMap["outputFile"] = os.path.expandvars( repMap["outputFile"] )
             repMap["outputFile"] = os.path.abspath( repMap["outputFile"] )
@@ -665,7 +652,7 @@ class OfflineValidationParallel(OfflineValidation):
         returnValue = []
         numJobs = int( self.general["parallelJobs"] )
         for index in range(numJobs):
-            scriptName = "%s.%s_%s.sh"%(scriptBaseName, self.alignmentToValidate.name, str(index) )
+            scriptName = "%s.%s.%s_%s.sh"%(scriptBaseName, self.name, self.alignmentToValidate.name, str(index) )
             repMap = GenericValidation.getRepMap(self)
             repMap["nIndex"]=""
             repMap["nIndex"]=str(index)
@@ -683,7 +670,10 @@ class OfflineValidationParallel(OfflineValidation):
     def getRepMap(self, alignment = None):
         repMap = OfflineValidation.getRepMap(self, alignment) 
         repMap.update({
-            "nJobs": self.general["parallelJobs"]
+            "nJobs": self.general["parallelJobs"],
+            "offlineValidationFileOutput":
+            configTemplates.offlineParallelFileOutputTemplate,
+            "nameValidation": self.name
             })
         # In case maxevents==-1, set number of parallel jobs to 1
         # since we cannot calculate number of events for each
@@ -698,19 +688,25 @@ class OfflineValidationParallel(OfflineValidation):
         else the validation is appended to the list
         """
         repMap = self.getRepMap()
-        if validationsSoFar == "":
-            parameters = ""
-            fileToAdd = ""
-            for index in range(int(self.__NJobs)):
-                fileToAdd = '%(resultFile)s'%repMap
-                fileToAdd = fileToAdd.replace('.root','_'+str(index)+'.root')
-                if index < int( self.general["parallelJobs"] )-1:
-                    parameters = parameters+fileToAdd+','
-                else:
-                    parameters = parameters+fileToAdd                
 
-            validationsSoFar = 'hadd("'+parameters+'");'
+        parameters = ""
+        fileToAdd = ""
+        for index in range(int(self.__NJobs)):
+            fileToAdd = '%(resultFile)s'%repMap
+            fileToAdd = fileToAdd.replace('.root','_'+str(index)+'.root')
+            if index < int( self.general["parallelJobs"] )-1:
+                parameters = parameters+fileToAdd+','
+            else:
+                parameters = parameters+fileToAdd                
+                
+        mergedoutputfile = "AlignmentValidation_" + self.name + "_" + '%(name)s'%repMap + ".root"
+        validationsSoFar += 'hadd("'+parameters+'","'+mergedoutputfile+'");' + "\n"
         return validationsSoFar
+
+    def createCrabCfg( self ):
+        raise StandardError, ("jobmode 'crab' not supported for "
+                              "'offlineParallel' validation. "
+                              "Please choose another 'jobmode'.")
 
 
 class OfflineValidationDQM(OfflineValidation):
@@ -746,18 +742,22 @@ class OfflineValidationDQM(OfflineValidation):
 class MonteCarloValidation(GenericValidation):
     def __init__(self, valName, alignment, config):
         GenericValidation.__init__(self, valName, alignment, config)
-        try:
-            self.jobmode = config.getResultingSection( "mcValidate:"+self.name)["jobmode"]
-        except KeyError:
-            pass
+        defaults = {
+            "jobmode":self.jobmode,
+            "runRange":"",
+            "JSON":""
+            }
         mandatories = [ "relvalsample", "maxevents" ]
         if not config.has_section( "mcValidate:"+self.name ):
             mcValidate = config.getResultingSection( "general",
-                                                  demandPars = mandatories )
+                                                     defaultDict = defaults,
+                                                     demandPars = mandatories )
         else:
             mcValidate = config.getResultingSection( "mcValidate:"+self.name, 
-                                                  demandPars = mandatories )
+                                                     defaultDict = defaults,
+                                                     demandPars = mandatories )
         self.general.update( mcValidate )
+        self.jobmode = self.general["jobmode"]
 
     def createConfiguration(self, path ):
         cfgName = "TkAlMcValidation.%s.%s_cfg.py"%( self.name,
@@ -788,13 +788,29 @@ class MonteCarloValidation(GenericValidation):
         scripts = {scriptName: replaceByMap( configTemplates.scriptTemplate, repMap ) }
         return GenericValidation.createScript(self, scripts, path)
 
+    def createCrabCfg( self, path,
+                       crabCfgBaseName = "TkAlMcValidate"  ):
+        crabCfgName = "crab.%s.%s.%s.cfg"%( crabCfgBaseName, self.name,
+                                            self.alignmentToValidate.name )
+        repMap = self.getRepMap()
+        repMap["script"] = "dummy_script.sh"
+        repMap["crabOutputDir"] = os.path.basename( path )
+        repMap["crabWorkingDir"] = crabCfgName.split( '.cfg' )[0]
+        self.crabWorkingDir = repMap["crabWorkingDir"]
+        repMap["numberOfJobs"] = self.general["parallelJobs"]
+        repMap["cfgFile"] = self.configFiles[0]
+        repMap["queue"] = self.jobmode.split( ',' )[1].split( '-q' )[1]
+        crabCfg = {crabCfgName: replaceByMap( configTemplates.crabCfgTemplate,
+                                              repMap ) }
+        return GenericValidation.createCrabCfg( self, crabCfg, path )
+
     def getRepMap( self, alignment = None ):
         repMap = GenericValidation.getRepMap(self, alignment)
         repMap.update({ 
             "nEvents": self.general["maxevents"],
             # Keep the following parameters for backward compatibility
-            "RelValSample": self.general["relvalsample"]# ,
-            # "GlobalTag": self.general["globaltag"]
+            "RelValSample": self.general["relvalsample"]
+
             })
         return repMap
 
@@ -802,18 +818,22 @@ class MonteCarloValidation(GenericValidation):
 class TrackSplittingValidation(GenericValidation):
     def __init__(self, valName, alignment, config):
         GenericValidation.__init__(self, valName, alignment, config)
-        try:
-            self.jobmode = config.getResultingSection( "split:"+self.name)["jobmode"]
-        except KeyError:
-            pass
+        defaults = {
+            "jobmode":self.jobmode,
+            "runRange":"",
+            "JSON":""
+            }
         mandatories = [ "trackcollection", "maxevents" ]
         if not config.has_section( "split:"+self.name ):
             split = config.getResultingSection( "general",
-                                                  demandPars = mandatories )
+                                                defaultDict = defaults,
+                                                demandPars = mandatories )
         else:
             split = config.getResultingSection( "split:"+self.name, 
-                                                  demandPars = mandatories )
+                                                defaultDict = defaults,
+                                                demandPars = mandatories )
         self.general.update( split )
+        self.jobmode = self.general["jobmode"]
 
 
     def createConfiguration(self, path ):
@@ -845,14 +865,29 @@ class TrackSplittingValidation(GenericValidation):
         scripts = {scriptName: replaceByMap( configTemplates.scriptTemplate, repMap ) }
         return GenericValidation.createScript(self, scripts, path)
 
+    def createCrabCfg( self, path,
+                       crabCfgBaseName = "TkAlTrackSplitting"  ):
+        crabCfgName = "crab.%s.%s.%s.cfg"%( crabCfgBaseName, self.name,
+                                            self.alignmentToValidate.name )
+        repMap = self.getRepMap()
+        repMap["script"] = "dummy_script.sh"
+        repMap["crabOutputDir"] = os.path.basename( path )
+        repMap["crabWorkingDir"] = crabCfgName.split( '.cfg' )[0]
+        self.crabWorkingDir = repMap["crabWorkingDir"]
+        repMap["numberOfJobs"] = self.general["parallelJobs"]
+        repMap["cfgFile"] = self.configFiles[0]
+        repMap["queue"] = self.jobmode.split( ',' )[1].split( '-q' )[1]
+        crabCfg = {crabCfgName: replaceByMap( configTemplates.crabCfgTemplate,
+                                              repMap ) }
+        return GenericValidation.createCrabCfg( self, crabCfg, path )
+
     def getRepMap( self, alignment = None ):
         repMap = GenericValidation.getRepMap(self)
         # repMap = self.getRepMap()
         repMap.update({ 
             "nEvents": self.general["maxevents"],
             # Keep the following parameters for backward compatibility
-            "TrackCollection": self.general["trackcollection"]# ,
-            # "GlobalTag": self.general["globaltag"]
+            "TrackCollection": self.general["trackcollection"]
             })
         return repMap
     
@@ -863,7 +898,10 @@ class ZMuMuValidation(GenericValidation):
         defaults = {
             "zmumureference": ("/afs/cern.ch/cms/CAF/CMSALCA/ALCA_TRACKERALIGN2"
                                "/TMP_EM/ZMuMu/data/MC/BiasCheck_DYToMuMu_Summer"
-                               "11_TkAlZMuMu_IDEAL.root")
+                               "11_TkAlZMuMu_IDEAL.root"),
+            "jobmode":self.jobmode,
+            "runRange":"",
+            "JSON":""
             }
         mandatories = [ "dataset", "maxevents", "etamax1", "etamin1", "etamax2",
                         "etamin2" ]
@@ -876,10 +914,7 @@ class ZMuMuValidation(GenericValidation):
                                                   defaultDict = defaults,
                                                   demandPars = mandatories )
         self.general.update( zmumu )
-        try:
-            self.jobmode = config.getResultingSection( "zmumu:"+self.name)["jobmode"]
-        except KeyError:
-            pass
+        self.jobmode = self.general["jobmode"]
     
     def createConfiguration(self, path, configBaseName = "TkAlZMuMuValidation" ):
         cfgName = "%s.%s.%s_cfg.py"%( configBaseName, self.name,
@@ -900,13 +935,31 @@ class ZMuMuValidation(GenericValidation):
         scripts = {scriptName: replaceByMap( configTemplates.zMuMuScriptTemplate, repMap ) }
         return GenericValidation.createScript(self, scripts, path)
 
+    def createCrabCfg( self, path,
+                       crabCfgBaseName = "TkAlZMuMuValidation"  ):
+        crabCfgName = "crab.%s.%s.%s.cfg"%( crabCfgBaseName, self.name,
+                                            self.alignmentToValidate.name )
+        repMap = self.getRepMap()
+        repMap["script"] = "dummy_script.sh"
+        repMap["crabOutputDir"] = os.path.basename( path )
+        repMap["crabWorkingDir"] = crabCfgName.split( '.cfg' )[0]
+        self.crabWorkingDir = repMap["crabWorkingDir"]
+        repMap["numberOfJobs"] = self.general["parallelJobs"]
+        repMap["cfgFile"] = self.configFiles[0]
+        repMap["queue"] = self.jobmode.split( ',' )[1].split( '-q' )[1]
+        crabCfg = {crabCfgName: replaceByMap( configTemplates.crabCfgTemplate,
+                                              repMap ) }
+        return GenericValidation.createCrabCfg( self, crabCfg, path )
+
     def getRepMap(self, alignment = None):
         repMap = GenericValidation.getRepMap(self, alignment) 
         repMap.update({
-            "nEvents": self.general["maxevents"] # ,
-            # "GlobalTag": self.general["globaltag"]
+            "nEvents": self.general["maxevents"]
                 })
         return repMap
+
+# Needed for more than one geometry comparison for one alignment
+alignRandDict = {}
 
 class ValidationJob:
     def __init__( self, validation, config, options ):
@@ -922,23 +975,23 @@ class ValidationJob:
         self.__valType = valString[0]
         self.__valName = valString[1]
         self.__commandLineOptions = options
+        self.__config = config
         # workaround for intermediate parallel version
         if self.__valType == "offlineParallel":
             section = "offline" + ":" + self.__valName
         else:
             section = self.__valType + ":" + self.__valName
-        if not config.has_section( section ):
+        if not self.__config.has_section( section ):
             raise StandardError, ("Validation '%s' of type '%s' is requested in"
                                   " '[validation]' section, but is not defined."
                                   "\nYou have to add a '[%s]' section."
                                   %( self.__valName, self.__valType, section ))
         self.validation = self.__getValidation( self.__valType, self.__valName,
-                                                alignments, config, options )
-        self.__config = config
+                                                alignments, self.__config,
+                                                options )
 
     def __getValidation( self, valType, name, alignments, config, options ):
         if valType == "compare":
-            # validation = GeometryComparison( name, alignments, config, options )
             alignmentsList = alignments.split( "," )
             firstAlignList = alignmentsList[0].split()
             firstAlignName = firstAlignList[0].strip()
@@ -950,7 +1003,7 @@ class ValidationJob:
                 firstRun = firstAlignList[1]
             else:
                 firstRun = "1"
-            firstAlign = Alignment( firstAlignName, config, firstRun )
+            firstAlign = Alignment( firstAlignName, self.__config, firstRun )
             secondAlignList = alignmentsList[1].split()
             secondAlignName = secondAlignList[0].strip()
             if len( secondAlignList ) > 1:
@@ -960,48 +1013,59 @@ class ValidationJob:
             if secondAlignName == "IDEAL":
                 secondAlign = secondAlignName
             else:
-                secondAlign = Alignment( secondAlignName, config, secondRun )
+                secondAlign = Alignment( secondAlignName, self.__config,
+                                         secondRun )
+            # check if alignment was already compared previously
+            try:
+                randomWorkdirPart = alignRandDict[firstAlignName]
+            except KeyError:
+                randomWorkdirPart = None
+                
             validation = GeometryComparison( name, firstAlign, secondAlign,
-                                             config,
-                                             self.__commandLineOptions.getImages )
+                                             self.__config,
+                                             self.__commandLineOptions.getImages,
+                                             randomWorkdirPart )
+            alignRandDict[firstAlignName] = validation.randomWorkdirPart
+            if not secondAlignName == "IDEAL":
+                alignRandDict[secondAlignName] = validation.randomWorkdirPart
         elif valType == "offline":
-            # validation = OfflineValidation( name, alignments, config, options )
             validation = OfflineValidation( name, 
-                Alignment( alignments.strip(), config ), config )
+                Alignment( alignments.strip(), self.__config ), self.__config )
         elif valType == "offlineDQM":
             validation = OfflineValidationDQM( name, 
-                Alignment( alignments.strip(), config ), config )
+                Alignment( alignments.strip(), self.__config ), self.__config )
         elif valType == "offlineParallel":
             validation = OfflineValidationParallel( name, 
-                Alignment( alignments.strip(), config ), config )
+                Alignment( alignments.strip(), self.__config ), self.__config )
         elif valType == "mcValidate":
             validation = MonteCarloValidation( name, 
-                Alignment( alignments.strip(), config ), config )
+                Alignment( alignments.strip(), self.__config ), self.__config )
         elif valType == "split":
             validation = TrackSplittingValidation( name, 
-                Alignment( alignments.strip(), config ), config )
+                Alignment( alignments.strip(), self.__config ), self.__config )
         elif valType == "zmumu":
             validation = ZMuMuValidation( name, 
-                Alignment( alignments.strip(), config ), config )
+                Alignment( alignments.strip(), self.__config ), self.__config )
         else:
             raise StandardError, "Unknown validation mode '%s'"%valType
         return validation
 
     def __createJob( self, jobMode, outpath ):
-        # Create here scripts, cfg.py-files (, crab.cfg-files)
+        """This private method creates the needed files for the validation job.
+           """
         self.validation.createConfiguration( outpath )
         self.__scripts = self.validation.createScript( outpath )
-        # self.validation.createCrabConfig()
+        if jobMode.split( ',' )[0] == "crab":
+            self.validation.createCrabCfg( outpath )
         return None
 
     def createJob(self):
-        self.__createJob( self.validation.jobmode, os.path.abspath( self.__commandLineOptions.Name) )
+        """This is the method called to create the job files."""
+        self.__createJob( self.validation.jobmode,
+                          os.path.abspath( self.__commandLineOptions.Name) )
 
     def runJob( self ):
-        # Check here for valid job mode: lxBatch, interactive (, crab)
         general = self.__config.getGeneral()
-#         self.__createJob( self.validation.jobmode, os.path.abspath( self.__commandLineOptions.Name) )
-        # Now run the job 
         log = ""
         for script in self.__scripts:
             name = os.path.splitext( os.path.basename( script) )[0]
@@ -1010,10 +1074,9 @@ class ValidationJob:
                 continue
             log = ">             Validating "+name
             print ">             Validating "+name
-
             if self.validation.jobmode == "interactive":
                 log += getCommandOutput2( script )
-            if self.validation.jobmode.split(",")[0] == "lxBatch":
+            elif self.validation.jobmode.split(",")[0] == "lxBatch":
                 repMap = { 
                     "commands": self.validation.jobmode.split(",")[1],
                     "logDir": general["logdir"],
@@ -1023,30 +1086,51 @@ class ValidationJob:
                     }
                 log+=getCommandOutput2("%(bsub)s %(commands)s -J %(jobName)s "
                                        "-o %(logDir)s/%(jobName)s.stdout -e "
-                                       "%(logDir)s/%(jobName)s.stderr %(script)s"%repMap)
+                                       "%(logDir)s/%(jobName)s.stderr "
+                                       "%(script)s"%repMap)
+            elif self.validation.jobmode.split( "," )[0] == "crab":
+                pass
+            else:
+                raise StandardError, ("Unknown 'jobmode'!\n"
+                                      "Please change this parameter either in "
+                                      "the [general] or in the ["
+                                      + self.__valType + ":" + self.__valName
+                                      + "] section to one of the following "
+                                      "values:\n"
+                                      "\tinteractive\n\tlxBatch, -q <queue>\n"
+                                      "\tcrab, -q <queue>")
         return log
 
     def getValidation( self ):
         return self.validation
 
 
-def runJob(jobName, script, config):
-    general = config.getGeneral()
-    log = ">             Validating "+jobName
-    print ">             Validating "+jobName
-    if general["jobmode"] == "interactive":
-        log += getCommandOutput2( script )
-    if general["jobmode"].split(",")[0] == "lxBatch":
-        repMap = { 
-            "commands": general["jobmode"].split(",")[1],
-            "logDir": general["logdir"],
-            "jobName": jobName,
-            "script": script,
-            "bsub": "/afs/cern.ch/cms/caf/scripts/cmsbsub"
-            }
-        
-        log+=getCommandOutput2("%(bsub)s %(commands)s -J %(jobName)s -o %(logDir)s/%(jobName)s.stdout -e %(logDir)s/%(jobName)s.stderr %(script)s"%repMap)
-    return log
+def createCrabScript( path, validations ):
+    repMap = {"crabCommand": "",
+              "crabBaseDir": path,
+              "useCshell": ""
+              }
+    for validation in validations:
+        if validation.jobmode.split( ',' )[0] == 'crab':
+            valRepMap = {"crabWorkingDir": validation.crabWorkingDir,
+                         "crabCfgName": validation.crabWorkingDir + ".cfg"
+                      }
+            repMap["crabCommand"] += replaceByMap( configTemplates.crabCommandTemplate,
+                                                   valRepMap )
+    if len( repMap["crabCommand"] ) == 0:
+        return None
+    crabShScriptPath = os.path.join( path, 'TkAlRunCrab.sh' )
+    crabShScript = open( crabShScriptPath, 'w' )
+    crabShScript.write( replaceByMap( configTemplates.crabShellScriptTemplate,
+                                      repMap ) )
+    crabShScript.close()
+    repMap["useCshell"] = "c"
+    crabCshScriptPath = os.path.join( path, 'TkAlRunCrab.csh' )
+    crabCshScript = open( crabCshScriptPath, 'w' )
+    crabCshScript.write( replaceByMap( configTemplates.crabShellScriptTemplate,
+                                       repMap ) )
+    crabCshScript.close()
+    return crabShScriptPath, crabCshScriptPath
 
 def createOfflineJobsMergeScript(offlineValidationList, outFilePath):
     repMap = offlineValidationList[0].getRepMap() # bit ugly since some special features are filled
@@ -1138,11 +1222,10 @@ def createParallelMergeScript( path, validations ):
     if "OfflineValidationParallel" in comparisonLists:
         repMap["extendeValScriptPath"] = os.path.join(path, "TkAlExtendedOfflineValidation.C")
         createExtendedValidationScript( comparisonLists["OfflineValidationParallel"], repMap["extendeValScriptPath"] )
-        # add a script which merges output files from parallel jobs
         repMap["mergeOfflineParJobsScriptPath"] = os.path.join(path, "TkAlOfflineJobsMerge.C")
         createOfflineJobsMergeScript( comparisonLists["OfflineValidationParallel"], repMap["mergeOfflineParJobsScriptPath"] )
         repMap["RunExtendedOfflineValidation"] = replaceByMap(configTemplates.extendedValidationExecution, repMap)
-        # DownloadData is used to merge output files from parallel jobs
+        # DownloadData is the section which merges output files from parallel jobs
         # it uses the file TkAlOfflineJobsMerge.C
         repMap["DownloadData"] += replaceByMap( configTemplates.mergeOfflineParallelResults, repMap )
 
@@ -1216,6 +1299,12 @@ def main(argv = None):
     config.set("general","workdir",os.path.join(general["workdir"],options.Name) )
     config.set("general","datadir",os.path.join(general["datadir"],options.Name) )
     config.set("general","logdir",os.path.join(general["logdir"],options.Name) )
+
+    # clean up of log directory to avoid cluttering with files with different
+    # random numbers for geometry comparison
+    if os.path.isdir( config.getGeneral()["logdir"] ):
+        shutil.rmtree( config.getGeneral()["logdir"] )
+    
     if not os.path.exists( outPath ):
         os.makedirs( outPath )
     elif not os.path.isdir( outPath ):
@@ -1223,12 +1312,6 @@ def main(argv = None):
 
     #replace default templates by the once specified in the "alternateTemplates" section
     loadTemplates( config )
-
-    # alignments = config.getAlignments()
-    # validations = []
-    # for alignment in alignments:
-    #     alignment.restrictTo( options.restrictTo )
-    #     validations.extend( alignment.createValidations( config, options, alignments ) )
 
     #save backup configuration file
     backupConfigFile = open( os.path.join( outPath, "usedConfiguration.ini" ) , "w"  )
@@ -1239,13 +1322,22 @@ def main(argv = None):
     map( lambda job: job.createJob(), jobs )
     validations = [ job.getValidation() for job in jobs ]
 
-#     if general["parallelJobs"] == "1":
     if "OfflineValidationParallel" not in [val.__class__.__name__ for val in validations]:
         createMergeScript( outPath, validations )
     else:
         createParallelMergeScript( outPath, validations )
-
+    crabScript = createCrabScript( outPath, validations )
+    
     map( lambda job: job.runJob(), jobs )
+    if crabScript != None:
+        print
+        print "="*80
+        print "To start parallel validation please type:"
+        print "source "+outPath+"/TkAlRunCrab.sh"
+        print "\t<or>"
+        print "source "+outPath+"/TkAlRunCrab.csh"
+        print "="*80
+        print
     
 
 if __name__ == "__main__":        
