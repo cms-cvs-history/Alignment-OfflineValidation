@@ -14,8 +14,8 @@
  *   path p = { comparator }
  *
  *
- *  $Date: 2012/12/02 22:13:12 $
- *  $Revision: 1.14 $
+ *  $Date: 2012/11/05 10:58:06 $
+ *  $Revision: 1.13 $
  *  \author Nhan Tran
  *
  * ********
@@ -25,7 +25,6 @@
  */
 
 #include "FWCore/Framework/interface/EDAnalyzer.h"
-#include "FWCore/Framework/interface/ESHandle.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
 #include "Alignment/TrackerAlignment/interface/AlignableTracker.h"
 #include "CondFormats/Alignment/interface/SurveyErrors.h"
@@ -45,7 +44,6 @@
 #include "TH1D.h"
 
 class AlignTransform;
-class TrackerTopology;
 
 class TrackerGeometryCompare: public edm::EDAnalyzer { 
 public:
@@ -79,12 +77,11 @@ private:
 	//compare surface deformations
 	void compareSurfaceDeformations(TTree* _inputTree11, TTree* _inputTree12); 
 	//compares two geometries
-	void compareGeometries(Alignable* refAli, Alignable* curAli, const TrackerTopology* tTopo);
+	void compareGeometries(Alignable* refAli, Alignable* curAli);
 	//filling the ROOT file
-	void fillTree(Alignable *refAli, AlgebraicVector diff, // typedef CLHEP::HepVector      AlgebraicVector; 
-                      const TrackerTopology* tTopo); 
+	void fillTree(Alignable *refAli, AlgebraicVector diff); // typedef CLHEP::HepVector      AlgebraicVector; 
 	//for filling identifiers
-	void fillIdentifiers( int subdetlevel, int rawid, const TrackerTopology* tTopo);
+	void fillIdentifiers( int subdetlevel, int rawid );
 	//converts surveyRcd into alignmentRcd
 	void surveyToTracker(AlignableTracker* ali, Alignments* alignVals, AlignmentErrors* alignErrors);
 	//need for conversion for surveyToTracker
