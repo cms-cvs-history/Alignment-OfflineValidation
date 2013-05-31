@@ -13,7 +13,7 @@
 //
 // Original Author:  Erik Butz
 //         Created:  Tue Dec 11 14:03:05 CET 2007
-// $Id: TrackerOfflineValidation.cc,v 1.55 2012/09/28 20:48:06 flucke Exp $
+// $Id: TrackerOfflineValidation.cc,v 1.52 2011/09/15 08:06:07 mussgill Exp $
 //
 //
 
@@ -46,10 +46,14 @@
 #include "FWCore/ServiceRegistry/interface/Service.h"
 
 #include "DataFormats/DetId/interface/DetId.h"
+#include "DataFormats/SiPixelDetId/interface/PXBDetId.h"
+#include "DataFormats/SiPixelDetId/interface/PXFDetId.h"
+#include "DataFormats/SiStripDetId/interface/TECDetId.h"
+#include "DataFormats/SiStripDetId/interface/TIBDetId.h"
+#include "DataFormats/SiStripDetId/interface/TIDDetId.h"
+#include "DataFormats/SiStripDetId/interface/TOBDetId.h"
 #include "DataFormats/SiPixelDetId/interface/PixelSubdetector.h"
-#include "DataFormats/SiStripDetId/interface/StripSubdetector.h"
 #include "DataFormats/Math/interface/deltaPhi.h"
-#include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
 
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 #include "CommonTools/Utils/interface/TFileDirectory.h"
@@ -197,18 +201,21 @@ private:
   virtual void checkBookHists(const edm::EventSetup& setup);
 
   void bookGlobalHists(DirectoryWrapper& tfd);
-  void bookDirHists(DirectoryWrapper& tfd, const Alignable& ali, const TrackerTopology* tTopo);
-  void bookHists(DirectoryWrapper& tfd, const Alignable& ali, const TrackerTopology* tTopo, align::StructureType type, int i); 
+  void bookDirHists(DirectoryWrapper& tfd, const Alignable& ali, const AlignableObjectId& aliobjid);
+  void bookHists(DirectoryWrapper& tfd, const Alignable& ali, align::StructureType type, int i, 
+		 const AlignableObjectId& aliobjid);
  
   void collateSummaryHists( DirectoryWrapper& tfd, const Alignable& ali, int i, 
+			    const AlignableObjectId& aliobjid, 
 			    std::vector<TrackerOfflineValidation::SummaryContainer>& vLevelProfiles);
   
   void fillTree(TTree& tree, const std::map<int, TrackerOfflineValidation::ModuleHistos>& moduleHist_, 
-		TkOffTreeVariables& treeMem, const TrackerGeometry& tkgeom, const TrackerTopology* tTopo);
+		TkOffTreeVariables& treeMem, const TrackerGeometry& tkgeom);
   
   TrackerOfflineValidation::SummaryContainer bookSummaryHists(DirectoryWrapper& tfd, 
 							      const Alignable& ali, 
-							      align::StructureType type, int i); 
+							      align::StructureType type, int i, 
+							      const AlignableObjectId& aliobjid); 
 
   ModuleHistos& getHistStructFromMap(const DetId& detid); 
 
@@ -275,8 +282,6 @@ private:
   std::map<int,TrackerOfflineValidation::ModuleHistos> mTidResiduals_;
   std::map<int,TrackerOfflineValidation::ModuleHistos> mTobResiduals_;
   std::map<int,TrackerOfflineValidation::ModuleHistos> mTecResiduals_;
-
-  const edm::EventSetup* lastSetup_;
 };
 
 
@@ -357,8 +362,7 @@ TrackerOfflineValidation::TrackerOfflineValidation(const edm::ParameterSet& iCon
     useFit_(parSet_.getParameter<bool>("useFit")),
     useOverflowForRMS_(parSet_.getParameter<bool>("useOverflowForRMS")),
     dqmMode_(parSet_.getParameter<bool>("useInDqmMode")),
-    moduleDirectory_(parSet_.getParameter<std::string>("moduleDirectoryInOutput")),
-    lastSetup_(nullptr)
+    moduleDirectory_(parSet_.getParameter<std::string>("moduleDirectoryInOutput"))
 {
 }
 
@@ -387,14 +391,10 @@ TrackerOfflineValidation::checkBookHists(const edm::EventSetup& es)
   if (newBareTkGeomPtr == bareTkGeomPtr_) return; // already booked hists, nothing changed
 
   if (!bareTkGeomPtr_) { // pointer not yet set: called the first time => book hists
-
-    //Retrieve tracker topology from geometry
-    edm::ESHandle<TrackerTopology> tTopoHandle;
-    es.get<IdealGeometryRecord>().get(tTopoHandle);
-    const TrackerTopology* const tTopo = tTopoHandle.product();
-
+    AlignableObjectId aliobjid;
+    
     // construct alignable tracker to get access to alignable hierarchy 
-    AlignableTracker aliTracker(&(*tkGeom_), tTopo);
+    AlignableTracker aliTracker(&(*tkGeom_));
     
     edm::LogInfo("TrackerOfflineValidation") << "There are " << newBareTkGeomPtr->detIds().size()
 					     << " dets in the Geometry record.\n"
@@ -408,7 +408,7 @@ TrackerOfflineValidation::checkBookHists(const edm::EventSetup& es)
     
     // recursively book histogramms on lowest level
     DirectoryWrapper tfdw("",moduleDirectory_,dqmMode_);
-    this->bookDirHists(tfdw, aliTracker, tTopo);
+    this->bookDirHists(tfdw, aliTracker, aliobjid);
   }
   else { // histograms booked, but changed TrackerGeometry?
     edm::LogWarning("GeometryChange") << "@SUB=checkBookHists"
@@ -592,11 +592,11 @@ TrackerOfflineValidation::bookGlobalHists(DirectoryWrapper& tfd )
 
 
 void
-TrackerOfflineValidation::bookDirHists(DirectoryWrapper& tfd, const Alignable& ali, const TrackerTopology* tTopo)
+TrackerOfflineValidation::bookDirHists(DirectoryWrapper& tfd, const Alignable& ali, const AlignableObjectId& aliobjid)
 {
   std::vector<Alignable*> alivec(ali.components());
   for(int i=0, iEnd = ali.components().size();i < iEnd; ++i) {
-    std::string structurename  = AlignableObjectId::idToString((alivec)[i]->alignableObjectId());
+    std::string structurename  = aliobjid.typeToName((alivec)[i]->alignableObjectId());
     LogDebug("TrackerOfflineValidation") << "StructureName = " << structurename;
     std::stringstream dirname;
     dirname << structurename;
@@ -605,22 +605,22 @@ TrackerOfflineValidation::bookDirHists(DirectoryWrapper& tfd, const Alignable& a
 
     if (structurename.find("Endcap",0) != std::string::npos ) {
       DirectoryWrapper f(tfd,dirname.str(),moduleDirectory_,dqmMode_);
-      bookHists(f, *(alivec)[i], tTopo, ali.alignableObjectId() , i);
-      bookDirHists( f, *(alivec)[i], tTopo);
+      bookHists(f, *(alivec)[i], ali.alignableObjectId() , i, aliobjid);
+      bookDirHists( f, *(alivec)[i], aliobjid);
     } else if( !(this->isDetOrDetUnit( (alivec)[i]->alignableObjectId()) )
 	      || alivec[i]->components().size() > 1) {      
       DirectoryWrapper f(tfd,dirname.str(),moduleDirectory_,dqmMode_);
-      bookHists(tfd, *(alivec)[i], tTopo, ali.alignableObjectId() , i);
-      bookDirHists( f, *(alivec)[i], tTopo);
+      bookHists(tfd, *(alivec)[i], ali.alignableObjectId() , i, aliobjid);
+      bookDirHists( f, *(alivec)[i], aliobjid);
     } else {
-      bookHists(tfd, *(alivec)[i], tTopo, ali.alignableObjectId() , i);
+      bookHists(tfd, *(alivec)[i], ali.alignableObjectId() , i, aliobjid);
     }
   }
 }
 
 
 void 
-TrackerOfflineValidation::bookHists(DirectoryWrapper& tfd, const Alignable& ali, const TrackerTopology* tTopo, align::StructureType type, int i)
+TrackerOfflineValidation::bookHists(DirectoryWrapper& tfd, const Alignable& ali, align::StructureType type, int i, const AlignableObjectId& aliobjid)
 {
   TrackerAlignableId aliid;
   const DetId id = ali.id();
@@ -628,7 +628,7 @@ TrackerOfflineValidation::bookHists(DirectoryWrapper& tfd, const Alignable& ali,
   // comparing subdetandlayer to subdetIds gives a warning at compile time
   // -> subdetandlayer could also be pair<uint,uint> but this has to be adapted
   // in AlignableObjId 
-  std::pair<int,int> subdetandlayer = aliid.typeAndLayerFromDetId(id, tTopo);
+  std::pair<int,int> subdetandlayer = aliid.typeAndLayerFromDetId(id);
 
   align::StructureType subtype = align::invalid;
   
@@ -1207,12 +1207,9 @@ TrackerOfflineValidation::endJob()
 
   if (!tkGeom_.product()) return;
 
-  //Retrieve tracker topology from geometry
-  edm::ESHandle<TrackerTopology> tTopoHandle;
-  lastSetup_->get<IdealGeometryRecord>().get(tTopoHandle);
-  const TrackerTopology* const tTopo = tTopoHandle.product();
-
-  AlignableTracker aliTracker(&(*tkGeom_), tTopo);
+  AlignableTracker aliTracker(&(*tkGeom_));
+  
+  AlignableObjectId aliobjid;
   
   static const int kappadiffindex = this->GetIndex(vTrackHistos_,"h_diff_curvature");
   vTrackHistos_[kappadiffindex]->Add(vTrackHistos_[this->GetIndex(vTrackHistos_,"h_curvature_neg")],
@@ -1222,7 +1219,7 @@ TrackerOfflineValidation::endJob()
   // create summary histogramms recursively
   std::vector<TrackerOfflineValidation::SummaryContainer> vTrackerprofiles;
   DirectoryWrapper f("",moduleDirectory_,dqmMode_);
-  this->collateSummaryHists(f,(aliTracker), 0, vTrackerprofiles);
+  this->collateSummaryHists(f,(aliTracker), 0, aliobjid, vTrackerprofiles);
   
   if (dqmMode_) return;
   // Should be excluded in dqmMode, since TTree is not usable
@@ -1237,12 +1234,12 @@ TrackerOfflineValidation::endJob()
   // (see src/classes_def.xml and src/classes.h):
   tree->Branch("TkOffTreeVariables", &treeMemPtr); // address of pointer!
  
-  this->fillTree(*tree, mPxbResiduals_, *treeMemPtr, *tkGeom_, tTopo);
-  this->fillTree(*tree, mPxeResiduals_, *treeMemPtr, *tkGeom_, tTopo);
-  this->fillTree(*tree, mTibResiduals_, *treeMemPtr, *tkGeom_, tTopo);
-  this->fillTree(*tree, mTidResiduals_, *treeMemPtr, *tkGeom_, tTopo);
-  this->fillTree(*tree, mTobResiduals_, *treeMemPtr, *tkGeom_, tTopo);
-  this->fillTree(*tree, mTecResiduals_, *treeMemPtr, *tkGeom_, tTopo);
+  this->fillTree(*tree, mPxbResiduals_, *treeMemPtr, *tkGeom_);
+  this->fillTree(*tree, mPxeResiduals_, *treeMemPtr, *tkGeom_);
+  this->fillTree(*tree, mTibResiduals_, *treeMemPtr, *tkGeom_);
+  this->fillTree(*tree, mTidResiduals_, *treeMemPtr, *tkGeom_);
+  this->fillTree(*tree, mTobResiduals_, *treeMemPtr, *tkGeom_);
+  this->fillTree(*tree, mTecResiduals_, *treeMemPtr, *tkGeom_);
 
   delete treeMemPtr; treeMemPtr = 0;
 }
@@ -1250,6 +1247,7 @@ TrackerOfflineValidation::endJob()
 
 void
 TrackerOfflineValidation::collateSummaryHists( DirectoryWrapper& tfd, const Alignable& ali, int i, 
+					       const AlignableObjectId& aliobjid, 
 					       std::vector<TrackerOfflineValidation::SummaryContainer>& vLevelProfiles)
 {
   std::vector<Alignable*> alivec(ali.components());
@@ -1257,7 +1255,7 @@ TrackerOfflineValidation::collateSummaryHists( DirectoryWrapper& tfd, const Alig
   
   for(int iComp=0, iCompEnd = ali.components().size();iComp < iCompEnd; ++iComp) {
     std::vector< TrackerOfflineValidation::SummaryContainer > vProfiles;        
-    std::string structurename  = AlignableObjectId::idToString((alivec)[iComp]->alignableObjectId());
+    std::string structurename  = aliobjid.typeToName((alivec)[iComp]->alignableObjectId());
     
     LogDebug("TrackerOfflineValidation") << "StructureName = " << structurename;
     std::stringstream dirname;
@@ -1269,8 +1267,8 @@ TrackerOfflineValidation::collateSummaryHists( DirectoryWrapper& tfd, const Alig
     if(  !(this->isDetOrDetUnit( (alivec)[iComp]->alignableObjectId()) )
 	 || (alivec)[0]->components().size() > 1 ) {
       DirectoryWrapper f(tfd,dirname.str(),moduleDirectory_,dqmMode_);
-      this->collateSummaryHists( f, *(alivec)[iComp], i, vProfiles);
-      vLevelProfiles.push_back(this->bookSummaryHists(tfd, *(alivec[iComp]), ali.alignableObjectId(), iComp+1));
+      this->collateSummaryHists( f, *(alivec)[iComp], i, aliobjid, vProfiles);
+      vLevelProfiles.push_back(this->bookSummaryHists(tfd, *(alivec[iComp]), ali.alignableObjectId(), iComp+1, aliobjid));
       TH1 *hY = vLevelProfiles[iComp].sumYResiduals_;
       TH1 *hNormY = vLevelProfiles[iComp].sumNormYResiduals_;
       for(uint n = 0; n < vProfiles.size(); ++n) {
@@ -1296,14 +1294,15 @@ TrackerOfflineValidation::collateSummaryHists( DirectoryWrapper& tfd, const Alig
 
 TrackerOfflineValidation::SummaryContainer 
 TrackerOfflineValidation::bookSummaryHists(DirectoryWrapper& tfd, const Alignable& ali, 
-					   align::StructureType type, int i) 
+					   align::StructureType type, int i, 
+					   const AlignableObjectId& aliobjid)
 {
   const uint aliSize = ali.components().size();
   const align::StructureType alitype = ali.alignableObjectId();
   const align::StructureType subtype = ali.components()[0]->alignableObjectId();
-  const char *aliTypeName = AlignableObjectId::idToString(alitype); // lifetime of char* OK
-  const char *aliSubtypeName = AlignableObjectId::idToString(subtype);
-  const char *typeName = AlignableObjectId::idToString(type);
+  const char *aliTypeName = aliobjid.typeToName(alitype).c_str(); // lifetime of char* OK
+  const char *aliSubtypeName = aliobjid.typeToName(subtype).c_str();
+  const char *typeName = aliobjid.typeToName(type).c_str();
 
   const DetId aliDetId = ali.id(); 
   // y residuals only if pixel or specially requested for strip:
@@ -1343,7 +1342,7 @@ TrackerOfflineValidation::bookSummaryHists(DirectoryWrapper& tfd, const Alignabl
     }
     // title contains x-title
     const TString title(Form("Summary for substructures in %s %d;%s;", aliTypeName, i,
-			     AlignableObjectId::idToString(ali.components()[0]->components()[0]->alignableObjectId())));
+			     aliobjid.typeToName(ali.components()[0]->components()[0]->alignableObjectId()).c_str()));
     
     sumContainer.summaryXResiduals_ 
       = tfd.make<TH1F>(Form("h_summaryX%s_%d", aliTypeName, i), 
@@ -1464,7 +1463,7 @@ TrackerOfflineValidation::Fwhm (const TH1* hist) const
 void 
 TrackerOfflineValidation::fillTree(TTree& tree,
 				   const std::map<int, TrackerOfflineValidation::ModuleHistos>& moduleHist_,
-				   TkOffTreeVariables &treeMem, const TrackerGeometry& tkgeom, const TrackerTopology* tTopo)
+				   TkOffTreeVariables &treeMem, const TrackerGeometry& tkgeom)
 {
  
   for(std::map<int, TrackerOfflineValidation::ModuleHistos>::const_iterator it = moduleHist_.begin(), 
@@ -1478,24 +1477,27 @@ TrackerOfflineValidation::fillTree(TTree& tree,
     treeMem.isDoubleSide =0;
 
     if(treeMem.subDetId == PixelSubdetector::PixelBarrel){
+      PXBDetId pxbId(detId_);
       unsigned int whichHalfBarrel(1), rawId(detId_.rawId());  //DetId does not know about halfBarrels is PXB ...
       if( (rawId>=302056964 && rawId<302059300) || (rawId>=302123268 && rawId<302127140) ||
 	  (rawId>=302189572 && rawId<302194980) ) whichHalfBarrel=2;
-      treeMem.layer = tTopo->pxbLayer(detId_); 
+      treeMem.layer = pxbId.layer(); 
       treeMem.half = whichHalfBarrel;
-      treeMem.rod = tTopo->pxbLadder(detId_);     // ... so, ladder is not per halfBarrel-Layer, but per barrel-layer!
-      treeMem.module = tTopo->pxbModule(detId_);
+      treeMem.rod = pxbId.ladder();     // ... so, ladder is not per halfBarrel-Layer, but per barrel-layer!
+      treeMem.module = pxbId.module();
     } else if(treeMem.subDetId == PixelSubdetector::PixelEndcap){
+      PXFDetId pxfId(detId_); 
       unsigned int whichHalfCylinder(1), rawId(detId_.rawId());  //DetId does not kmow about halfCylinders in PXF
       if( (rawId>=352394500 && rawId<352406032) || (rawId>=352460036 && rawId<352471568) ||
 	  (rawId>=344005892 && rawId<344017424) || (rawId>=344071428 && rawId<344082960) ) whichHalfCylinder=2;
-      treeMem.layer = tTopo->pxfDisk(detId_); 
-      treeMem.side = tTopo->pxfSide(detId_);
+      treeMem.layer = pxfId.disk(); 
+      treeMem.side = pxfId.side();
       treeMem.half = whichHalfCylinder;
-      treeMem.blade = tTopo->pxfBlade(detId_); 
-      treeMem.panel = tTopo->pxfPanel(detId_);
-      treeMem.module = tTopo->pxfModule(detId_);
+      treeMem.blade = pxfId.blade(); 
+      treeMem.panel = pxfId.panel();
+      treeMem.module = pxfId.module();
     } else if(treeMem.subDetId == StripSubdetector::TIB){
+      TIBDetId tibId(detId_); 
       unsigned int whichHalfShell(1), rawId(detId_.rawId());  //DetId does not kmow about halfShells in TIB
        if ( (rawId>=369120484 && rawId<369120688) || (rawId>=369121540 && rawId<369121776) ||
 	    (rawId>=369136932 && rawId<369137200) || (rawId>=369137988 && rawId<369138288) ||
@@ -1505,38 +1507,41 @@ TrackerOfflineValidation::fillTree(TTree& tree,
 	    (rawId>=369141028 && rawId<369141296) || (rawId>=369142084 && rawId<369142384) ||
 	    (rawId>=369157492 && rawId<369157840) || (rawId>=369158532 && rawId<369158896) ||
 	    (rawId>=369173940 && rawId<369174352) || (rawId>=369174996 && rawId<369175440) ) whichHalfShell=2;
-      treeMem.layer = tTopo->tibLayer(detId_); 
-      treeMem.side = tTopo->tibStringInfo(detId_)[0];
+      treeMem.layer = tibId.layer(); 
+      treeMem.side = tibId.string()[0];
       treeMem.half = whichHalfShell;
-      treeMem.rod = tTopo->tibStringInfo(detId_)[2]; 
-      treeMem.outerInner = tTopo->tibStringInfo(detId_)[1]; 
-      treeMem.module = tTopo->tibModule(detId_);
-      treeMem.isStereo = tTopo->tibStereo(detId_);
-      treeMem.isDoubleSide = tTopo->tibIsDoubleSide(detId_);
+      treeMem.rod = tibId.string()[2]; 
+      treeMem.outerInner = tibId.string()[1]; 
+      treeMem.module = tibId.module();
+      treeMem.isStereo = tibId.stereo();
+      treeMem.isDoubleSide = tibId.isDoubleSide();
     } else if(treeMem.subDetId == StripSubdetector::TID){
-      treeMem.layer = tTopo->tidWheel(detId_); 
-      treeMem.side = tTopo->tidSide(detId_);
-      treeMem.ring = tTopo->tidRing(detId_); 
-      treeMem.outerInner = tTopo->tidModuleInfo(detId_)[0]; 
-      treeMem.module = tTopo->tidModuleInfo(detId_)[1];
-      treeMem.isStereo = tTopo->tidStereo(detId_);
-      treeMem.isDoubleSide = tTopo->tidIsDoubleSide(detId_);
+      TIDDetId tidId(detId_); 
+      treeMem.layer = tidId.wheel(); 
+      treeMem.side = tidId.side();
+      treeMem.ring = tidId.ring(); 
+      treeMem.outerInner = tidId.module()[0]; 
+      treeMem.module = tidId.module()[1];
+      treeMem.isStereo = tidId.stereo();
+      treeMem.isDoubleSide = tidId.isDoubleSide();
     } else if(treeMem.subDetId == StripSubdetector::TOB){
-      treeMem.layer = tTopo->tobLayer(detId_); 
-      treeMem.side = tTopo->tobRodInfo(detId_)[0];
-      treeMem.rod = tTopo->tobRodInfo(detId_)[1]; 
-      treeMem.module = tTopo->tobModule(detId_);
-      treeMem.isStereo = tTopo->tobStereo(detId_);
-      treeMem.isDoubleSide = tTopo->tobIsDoubleSide(detId_);
+      TOBDetId tobId(detId_); 
+      treeMem.layer = tobId.layer(); 
+      treeMem.side = tobId.rod()[0];
+      treeMem.rod = tobId.rod()[1]; 
+      treeMem.module = tobId.module();
+      treeMem.isStereo = tobId.stereo();
+      treeMem.isDoubleSide = tobId.isDoubleSide();
     } else if(treeMem.subDetId == StripSubdetector::TEC) {
-      treeMem.layer = tTopo->tecWheel(detId_); 
-      treeMem.side  = tTopo->tecSide(detId_);
-      treeMem.ring  = tTopo->tecRing(detId_); 
-      treeMem.petal = tTopo->tecPetalInfo(detId_)[1]; 
-      treeMem.outerInner = tTopo->tecPetalInfo(detId_)[0];
-      treeMem.module = tTopo->tecModule(detId_);
-      treeMem.isStereo = tTopo->tecStereo(detId_);
-      treeMem.isDoubleSide = tTopo->tecIsDoubleSide(detId_); 
+      TECDetId tecId(detId_); 
+      treeMem.layer = tecId.wheel(); 
+      treeMem.side  = tecId.side();
+      treeMem.ring  = tecId.ring(); 
+      treeMem.petal = tecId.petal()[1]; 
+      treeMem.outerInner = tecId.petal()[0];
+      treeMem.module = tecId.module();
+      treeMem.isStereo = tecId.stereo();
+      treeMem.isDoubleSide = tecId.isDoubleSide(); 
     }
     
     //variables concerning the tracker geometry
@@ -1629,7 +1634,7 @@ TrackerOfflineValidation::fillTree(TTree& tree,
 
     // mean and RMS values in local y (extracted from histograms(normalized Yprime on module level)
     // might exist in pixel only
-    if (it->second.ResYprimeHisto) {//(stripYResiduals_)
+    if (it->second.ResYprimeHisto) {//(stripYResiduals_){
       TH1 *h = it->second.ResYprimeHisto;
       treeMem.meanY = h->GetMean();
       treeMem.rmsY  = h->GetRMS();

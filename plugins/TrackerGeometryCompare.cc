@@ -44,15 +44,18 @@
 #include "CommonTools/UtilAlgos/interface/TFileService.h"
 //#include "Geometry/Records/interface/PGeometricDetRcd.h"
 
-#include "DataFormats/TrackerCommon/interface/TrackerTopology.h"
-#include "Geometry/Records/interface/IdealGeometryRecord.h"
+#include "DataFormats/SiStripDetId/interface/TECDetId.h"
+#include "DataFormats/SiStripDetId/interface/TIBDetId.h"
+#include "DataFormats/SiStripDetId/interface/TOBDetId.h"
+#include "DataFormats/SiStripDetId/interface/TIDDetId.h"
+#include "DataFormats/SiPixelDetId/interface/PXFDetId.h"
+#include "DataFormats/SiPixelDetId/interface/PXBDetId.h"
 
 #include <iostream>
 #include <fstream>
 #include <sstream> 
 
 TrackerGeometryCompare::TrackerGeometryCompare(const edm::ParameterSet& cfg) :
-  m_params( cfg ), 	
   referenceTracker(0),
   dummyTracker(0),
   currentTracker(0),
@@ -94,14 +97,13 @@ TrackerGeometryCompare::TrackerGeometryCompare(const edm::ParameterSet& cfg) :
 	_weightByIdFile = cfg.getUntrackedParameter< std::string > ("weightByIdFile");
 	
 	//setting the levels being used in the geometry comparator
-	//DM_534?? AlignableObjectId dummy; 
+	AlignableObjectId dummy; //DM_534??
 	edm::LogInfo("TrackerGeometryCompare") << "levels: " << levels.size();
 	for (unsigned int l = 0; l < levels.size(); ++l){
-		m_theLevels.push_back(AlignableObjectId::stringToId(levels[l])) ; //DM_61X?? 
-		//DM_534?? m_theLevels.push_back( dummy.nameToType(levels[l])); 
+		//DM_61Xm_theLevels.push_back(AlignableObjectId::stringToId(levels[l])) ; 
+		m_theLevels.push_back( dummy.nameToType(levels[l])); //DM_534?? 
 		edm::LogInfo("TrackerGeometryCompare") << "level: " << levels[l];
-		edm::LogInfo("TrackerGeometryCompare") << "structure type: " << AlignableObjectId::stringToId(levels[l]) ; 
-		//DM_534?? edm::LogInfo("TrackerGeometryCompare") << "structure type: " << dummy.typeToName(m_theLevels.at(l)); 
+		edm::LogInfo("TrackerGeometryCompare") << "structure type: " << dummy.typeToName(m_theLevels.at(l));  //DM_534?? 
 	}
 	
 		
@@ -228,11 +230,6 @@ void TrackerGeometryCompare::analyze(const edm::Event&, const edm::EventSetup& i
 
   if (firstEvent_) {
 
-        //Retrieve tracker topology from geometry
-        edm::ESHandle<TrackerTopology> tTopoHandle;
-        iSetup.get<IdealGeometryRecord>().get(tTopoHandle);
-        const TrackerTopology* const tTopo = tTopoHandle.product();
-
 	//upload the ROOT geometries
 	createROOTGeometry(iSetup);
 
@@ -243,7 +240,7 @@ void TrackerGeometryCompare::analyze(const edm::Event&, const edm::EventSetup& i
 	}
 	
 	//compare the goemetries
-	compareGeometries(referenceTracker,currentTracker,tTopo);
+	compareGeometries(referenceTracker,currentTracker);
 	compareSurfaceDeformations(_inputTree11, _inputTree12); 
 	
 	//write out ntuple
@@ -274,11 +271,6 @@ void TrackerGeometryCompare::createROOTGeometry(const edm::EventSetup& iSetup){
 	double inputX1, inputY1, inputZ1, inputX2, inputY2, inputZ2;
 	double inputAlpha1, inputBeta1, inputGamma1, inputAlpha2, inputBeta2, inputGamma2;
 		
-	//Retrieve tracker topology from geometry
-	edm::ESHandle<TrackerTopology> tTopoHandle;
-	iSetup.get<IdealGeometryRecord>().get(tTopoHandle);
-	const TrackerTopology* const tTopo = tTopoHandle.product();
-
 	//declare alignments
 	Alignments* alignments1 = new Alignments();
 	AlignmentErrors* alignmentErrors1 = new AlignmentErrors();	
@@ -361,13 +353,13 @@ void TrackerGeometryCompare::createROOTGeometry(const edm::EventSetup& iSetup){
 	iSetup.get<TrackerDigiGeometryRecord>().getRecord<GlobalPositionRcd>().get(globalPositionRcd);
 	
 	//reference tracker
-	TrackerGeometry* theRefTracker = trackerBuilder.build(&*theGeometricDet, m_params); 
+	TrackerGeometry* theRefTracker = trackerBuilder.build(&*theGeometricDet); //DM_534?? 
 	if (_inputFilename1 != "IDEAL"){
 		GeometryAligner aligner1;
 		aligner1.applyAlignments<TrackerGeometry>( &(*theRefTracker), &(*alignments1), &(*alignmentErrors1),
 												  align::DetectorGlobalPosition(*globalPositionRcd, DetId(DetId::Tracker)));
 	}
-	referenceTracker = new AlignableTracker(&(*theRefTracker), tTopo);
+	referenceTracker = new AlignableTracker(&(*theRefTracker));
 	//referenceTracker->setSurfaceDeformation(surfDef1, true) ; 
 
 	int inputRawid1;
@@ -402,13 +394,13 @@ void TrackerGeometryCompare::createROOTGeometry(const edm::EventSetup& iSetup){
 	}
 		
 	//currernt tracker
-	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet,m_params); 
+	TrackerGeometry* theCurTracker = trackerBuilder.build(&*theGeometricDet); //DM_534??
 	if (_inputFilename2 != "IDEAL"){
 		GeometryAligner aligner2;
 		aligner2.applyAlignments<TrackerGeometry>( &(*theCurTracker), &(*alignments2), &(*alignmentErrors2),
 												  align::DetectorGlobalPosition(*globalPositionRcd, DetId(DetId::Tracker)));
 	}
-	currentTracker = new AlignableTracker(&(*theCurTracker), tTopo);
+	currentTracker = new AlignableTracker(&(*theCurTracker));
 	
 	const std::vector<Alignable*> comp2 = currentTracker->deepComponents(); 
 
@@ -583,7 +575,7 @@ void TrackerGeometryCompare::compareSurfaceDeformations(TTree* refTree, TTree* c
   return ; 	
 }
 
-void TrackerGeometryCompare::compareGeometries(Alignable* refAli, Alignable* curAli, const TrackerTopology* tTopo){
+void TrackerGeometryCompare::compareGeometries(Alignable* refAli, Alignable* curAli){
 
 	using namespace align ; 
 	
@@ -622,7 +614,6 @@ void TrackerGeometryCompare::compareGeometries(Alignable* refAli, Alignable* cur
 			// local coordinates
 			lRtotal.set(diff[6],diff[7],diff[8]);
 			lWtotal.set(diff[9],diff[10],diff[11]);
-			
 			align::moveAlignable(curAli, diff);
 			float tolerance = 1e-7;
 			AlgebraicVector check = align::diffAlignables(refAli,curAli, _weightBy, _weightById, _weightByIdVector);
@@ -647,12 +638,12 @@ void TrackerGeometryCompare::compareGeometries(Alignable* refAli, Alignable* cur
 		TRtot(7) = lRtotal.x(); TRtot(8) = lRtotal.y(); TRtot(9) = lRtotal.z();
 		TRtot(10) = lWtotal.x(); TRtot(11) = lWtotal.y(); TRtot(12) = lWtotal.z();
 
-		fillTree(refAli, TRtot, tTopo);
+		fillTree(refAli, TRtot);
 	}
 
 	// another added level for difference between det and detunit
 	for (unsigned int i = 0; i < nComp; ++i) 
-	  compareGeometries(refComp[i],curComp[i],tTopo);	
+	  compareGeometries(refComp[i],curComp[i]);	
 
 }
 
@@ -660,9 +651,8 @@ void TrackerGeometryCompare::setCommonTrackerSystem(){
 
 	edm::LogInfo("TrackerGeometryCompare") << "Setting Common Tracker System....";
 	
-	// DM_534??AlignableObjectId dummy;
-	// DM_534??_commonTrackerLevel = dummy.nameToType(_setCommonTrackerSystem);
-	_commonTrackerLevel = AlignableObjectId::stringToId(_setCommonTrackerSystem); // DM_61X?? 
+	AlignableObjectId dummy; // DM_534??
+	_commonTrackerLevel = dummy.nameToType(_setCommonTrackerSystem); // DM_534?? 
 		
 	diffCommonTrackerSystem(referenceTracker, currentTracker);
 	
@@ -753,7 +743,7 @@ void TrackerGeometryCompare::diffCommonTrackerSystem(Alignable *refAli, Alignabl
 	
 }
 
-void TrackerGeometryCompare::fillTree(Alignable *refAli, AlgebraicVector diff, const TrackerTopology* tTopo){
+void TrackerGeometryCompare::fillTree(Alignable *refAli, AlgebraicVector diff){
 	
 	_id = refAli->id();
 	_level = refAli->alignableObjectId();
@@ -768,7 +758,7 @@ void TrackerGeometryCompare::fillTree(Alignable *refAli, AlgebraicVector diff, c
 	}
 	DetId detid(_id);
 	_sublevel = detid.subdetId();
-	fillIdentifiers(_sublevel, _id , tTopo);
+	fillIdentifiers( _sublevel, _id );
 	_xVal = refAli->globalPosition().x();
 	_yVal = refAli->globalPosition().y();
 	_zVal = refAli->globalPosition().z();
@@ -934,17 +924,17 @@ bool TrackerGeometryCompare::passIdCut( uint32_t id ){
 	
 }
 
-void TrackerGeometryCompare::fillIdentifiers( int subdetlevel, int rawid, const TrackerTopology* tTopo){
+void TrackerGeometryCompare::fillIdentifiers( int subdetlevel, int rawid ){
 	
 	
 	switch( subdetlevel ){
 			
                 case 1:
 	        {
-			
-			_identifiers[0] = tTopo->pxbModule( rawid );
-			_identifiers[1] = tTopo->pxbLadder( rawid );
-			_identifiers[2] = tTopo->pxbLayer( rawid );
+			PXBDetId pxbid( rawid );
+			_identifiers[0] = pxbid.module();
+			_identifiers[1] = pxbid.ladder();
+			_identifiers[2] = pxbid.layer();
 			_identifiers[3] = 999;
 			_identifiers[4] = 999;
 			_identifiers[5] = 999;
@@ -952,57 +942,57 @@ void TrackerGeometryCompare::fillIdentifiers( int subdetlevel, int rawid, const 
 		}
 		case 2:
 		{
-			
-			_identifiers[0] = tTopo->pxfModule( rawid );
-			_identifiers[1] = tTopo->pxfPanel( rawid );
-			_identifiers[2] = tTopo->pxfBlade( rawid );
-			_identifiers[3] = tTopo->pxfDisk( rawid );
-			_identifiers[4] = tTopo->pxfSide( rawid );
+			PXFDetId pxfid( rawid );
+			_identifiers[0] = pxfid.module();
+			_identifiers[1] = pxfid.panel();
+			_identifiers[2] = pxfid.blade();
+			_identifiers[3] = pxfid.disk();
+			_identifiers[4] = pxfid.side();
 			_identifiers[5] = 999;
 			break;
 		}
 		case 3:
 		{
-			
-			_identifiers[0] = tTopo->tibModule( rawid );
-			_identifiers[1] = tTopo->tibStringInfo( rawid )[0];
-			_identifiers[2] = tTopo->tibStringInfo( rawid )[1];
-			_identifiers[3] = tTopo->tibStringInfo( rawid )[2];
-			_identifiers[4] = tTopo->tibLayer( rawid );
+			TIBDetId tibid( rawid );
+			_identifiers[0] = tibid.module();
+			_identifiers[1] = tibid.string()[0];
+			_identifiers[2] = tibid.string()[1];
+			_identifiers[3] = tibid.string()[2];
+			_identifiers[4] = tibid.layer();
 			_identifiers[5] = 999;
 			break;
 		}
 		case 4: 
 		{
-			
-			_identifiers[0] = tTopo->tidModuleInfo( rawid )[0];
-			_identifiers[1] = tTopo->tidModuleInfo( rawid )[1];
-			_identifiers[2] = tTopo->tidRing( rawid );
-			_identifiers[3] = tTopo->tidWheel( rawid );
-			_identifiers[4] = tTopo->tidSide( rawid );
+			TIDDetId tidid( rawid );
+			_identifiers[0] = tidid.module()[0];
+			_identifiers[1] = tidid.module()[1];
+			_identifiers[2] = tidid.ring();
+			_identifiers[3] = tidid.wheel();
+			_identifiers[4] = tidid.side();
 			_identifiers[5] = 999;
 			break;
 		}
 		case 5: 
 		{
-			
-			_identifiers[0] = tTopo->tobModule( rawid );
-			_identifiers[1] = tTopo->tobRodInfo( rawid )[0];
-			_identifiers[2] = tTopo->tobRodInfo( rawid )[1];
-			_identifiers[3] = tTopo->tobLayer( rawid );
+			TOBDetId tobid( rawid );
+			_identifiers[0] = tobid.module();
+			_identifiers[1] = tobid.rod()[0];
+			_identifiers[2] = tobid.rod()[1];
+			_identifiers[3] = tobid.layer();
 			_identifiers[4] = 999;
 			_identifiers[5] = 999;
 			break;
 		}
 		case 6: 
 		{
-			
-			_identifiers[0] = tTopo->tecModule( rawid );
-			_identifiers[1] = tTopo->tecRing( rawid );
-			_identifiers[2] = tTopo->tecPetalInfo( rawid )[0];
-			_identifiers[3] = tTopo->tecPetalInfo( rawid )[1];
-			_identifiers[4] = tTopo->tecWheel( rawid );
-			_identifiers[5] = tTopo->tecSide( rawid );
+			TECDetId tecid( rawid );
+			_identifiers[0] = tecid.module();
+			_identifiers[1] = tecid.ring();
+			_identifiers[2] = tecid.petal()[0];
+			_identifiers[3] = tecid.petal()[1];
+			_identifiers[4] = tecid.wheel();
+			_identifiers[5] = tecid.side();
 			break;
 		}
 		default:
